@@ -1,0 +1,3 @@
+# Modelli NeMo scaricati (file grandi, non in git)
+*.nemo
+!.gitkeep

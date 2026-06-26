@@ -1,0 +1,37 @@
+services:
+  sbobinator-cpu:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.cpu
+    image: sbobinator:cpu
+    profiles: ["cpu"]
+    ports:
+      - "8501:8501"
+    volumes:
+      - ../data:/data
+      - ../models:/models
+    environment:
+      - NEMO_CACHE_DIR=/models
+    command: ui --port 8501
+
+  sbobinator-gpu:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.gpu
+    image: sbobinator:gpu
+    profiles: ["gpu"]
+    ports:
+      - "8501:8501"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ../data:/data
+      - ../models:/models
+    environment:
+      - NEMO_CACHE_DIR=/models
+    command: ui --port 8501
