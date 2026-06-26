@@ -18,6 +18,9 @@ data/input/*
 data/output/*
 !data/input/.gitkeep
 !data/output/.gitkeep
+!data/output/jobs/
+data/output/jobs/*
+!data/output/jobs/.gitkeep
 
 models/*
 !models/.gitkeep
