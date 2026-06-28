@@ -1,0 +1,5 @@
+# abstractive / normal
+# parole sorgente: 292 -> riassunto: 36 (12.3%)
+# frasi: 27 -> 3 | tempo: 5.43s
+
+la storia di roma raccontata da alberto cavaliere in 340 pagine. il poeta maledetto, dopo la chimica in versi, si è dato alla storia, a farne un poema didascalico. ma lei sa che io non sono.

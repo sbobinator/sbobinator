@@ -21,6 +21,7 @@ data/output/*
 !data/output/jobs/
 data/output/jobs/*
 !data/output/jobs/.gitkeep
+data/output/jobs/*.db
 
 models/*
 !models/.gitkeep
@@ -38,3 +39,6 @@ Thumbs.db
 *.wav.tmp
 *.part
 tmp/
+
+# MkDocs build output
+site/

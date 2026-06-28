@@ -1,6 +1,6 @@
 # Tracciamento bug — Sbobinator
 
-Documento aggiornato al **26 giugno 2026** (v0.2.x).  
+Documento aggiornato al **28 giugno 2026** (v0.3.0).  
 Elenco sistematico dei bug rilevati durante sviluppo e test su Windows, con causa, impatto, stato e fix.
 
 ---
@@ -12,6 +12,7 @@ Elenco sistematico dei bug rilevati durante sviluppo e test su Windows, con caus
 | ✅ Risolto | Fix in codice, verificato o ragionevolmente coperto |
 | 🔧 Parziale | Mitigazione in atto; limitazioni documentate |
 | 📋 Aperto | Noto, fix pianificato |
+| 🔍 In analisi | Causa individuata o verificata; fix non ancora applicato |
 | ℹ️ Limitazione | Comportamento atteso / vincolo ambiente, non bug puro |
 
 ---
@@ -19,12 +20,13 @@ Elenco sistematico dei bug rilevati durante sviluppo e test su Windows, con caus
 ## Indice
 
 1. [Bug segnalati dall'utente (sessione corrente)](#1-bug-segnalati-dallutente-sessione-corrente)
-2. [Bug critici risolti in precedenza](#2-bug-critici-risolti-in-precedenza)
-3. [Bug UI / UX](#3-bug-ui--ux)
-4. [Bug ambiente Windows](#4-bug-ambiente-windows)
-5. [Bug architettura / dati](#5-bug-architettura--dati)
-6. [Rischi residui e backlog](#6-rischi-residui-e-backlog)
-7. [Come testare le fix](#7-come-testare-le-fix)
+2. [Bug coda / upload — 28 giugno 2026](#2-bug-coda--upload--28-giugno-2026)
+3. [Bug critici risolti in precedenza](#3-bug-critici-risolti-in-precedenza)
+4. [Bug UI / UX](#4-bug-ui--ux)
+5. [Bug ambiente Windows](#5-bug-ambiente-windows)
+6. [Bug architettura / dati](#6-bug-architettura--dati)
+7. [Rischi residui e backlog](#7-rischi-residui-e-backlog)
+8. [Come testare le fix](#8-come-testare-le-fix)
 
 ---
 
@@ -103,7 +105,277 @@ data/output/jobs/
 
 ---
 
-## 2. Bug critici risolti in precedenza
+## 2. Bug coda / upload — 28 giugno 2026
+
+> **Contesto:** segnalati durante benchmark con 4 file (`breve`, `lungo`, `medio`, `molto-lungo`) mentre il worker elaborava.  
+> **Verifica DB (read-only, 28/06 ~12:00):** 4 job totali, **1 riga per file**, nessun duplicato in `queue.db`.  
+> Il triplo `molto-lungo` in UI **non** corrisponde a 3 record SQLite.
+
+---
+
+### BUG-QUEUE-016 — Stesso file mostrato più volte nel pannello coda
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | 🔍 In analisi |
+| **Severità** | Media |
+| **Segnalazione** | `campione-italiano-molto-lungo.wav` compariva **3 volte** in "Coda elaborazione", stesso ID cartella `20260628_114944_campione-italiano-molto-lungo`, mentre `medio` compariva una volta |
+
+**Sintomo osservato:**
+
+```
+▶️ campione-italiano-medio.wav — in elaborazione
+⏳ campione-italiano-molto-lungo.wav — in coda   (x3, stesso job id)
+```
+
+**Evidenza tecnica:**
+
+| Controllo | Risultato |
+|-----------|-----------|
+| `load_index()` su `queue.db` | 4 job: breve/lungo/medio `completed`, molto-lungo `running` — **nessun duplicato `source_name`** |
+| Cartelle `jobs/` | Una cartella per stem, nessun suffisso `_2` / `_3` su molto-lungo |
+| Conclusione | Probabile **bug di rendering UI**, non accodamento multiplo persistente |
+
+**Cause probabili (ordinate per probabilità):**
+
+1. **`_poll_queue_refresh()` + `st.rerun(scope="app")` ogni 2s** (`app.py` ~268–272)  
+   Il fragment forza rerun globale mentre ci sono job attivi. Su alcune versioni Streamlit questo può produrre **widget duplicati** o sezioni ridisegnate senza reset, specialmente se combinato con `st.container(border=True)` nel loop coda.
+
+2. **Più istanze Streamlit** sulla stessa porta (problema già visto in sessione) — l'utente potrebbe vedere stato incoerente o sovrapposto tra tab/processi. Meno probabile se il testo ripete lo **stesso** `job.id`.
+
+3. **Doppio/triplo click "Accoda"** con file ancora visibili nell'uploader (vedi BUG-UI-017): anche se il DB deduplica, la UI potrebbe aver mostrato stati intermedi prima del `rerun` finale.
+
+4. **Accodamento reale sovrascritto** — `enqueue_job` usa `ON CONFLICT(id) DO UPDATE` (`jobs.py` `_upsert_job`). Se per race `new_job_id()` generasse lo stesso ID due volte nello stesso secondo **prima** che esista la cartella, si aggiornerebbe una sola riga. Non spiega da solo **3 righe visive** con stesso ID.
+
+**Codice coinvolto:**
+
+| File | Funzione / rigione |
+|------|-------------------|
+| `src/sbobinator/ui/app.py` | `_render_queue_panel()` — loop `for job in active` |
+| `src/sbobinator/ui/app.py` | `_poll_queue_refresh()` — `@st.fragment(run_every=2s)` + `st.rerun(scope="app")` |
+| `src/sbobinator/jobs.py` | `load_active_queue()`, `enqueue_job()`, `new_job_id()` |
+
+**Impatto:**  
+Contatore "In coda" fuorviante, rischio di clic "Annulla" confusi, sensazione che l'ultimo file venga accodato N volte.
+
+**Fix proposti (non applicati — worker in esecuzione):**
+
+1. Spostare il refresh coda in un **fragment isolato** che ridisegna solo il pannello coda (senza `st.rerun(scope="app")` sull'intera app).
+2. Oppure usare `st.status` / `st.empty()` con aggiornamento localizzato.
+3. Deduplicare `active` in UI per `job.id` prima del render (mitigazione difensiva).
+4. Aggiungere test: N file in un batch → `COUNT(*)` in DB = N righe uniche.
+
+---
+
+### BUG-UI-017 — File restano nell'area upload dopo l'accodamento
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | 🔍 In analisi |
+| **Severità** | Media |
+| **Segnalazione** | Dopo "Accoda sbobinatura", i file caricati **rimangono visibili** nell'uploader mentre la coda elabora → confusione ("devo ricliccare?" / accodamenti multipli) |
+
+**Comportamento atteso:**  
+Dopo accodamento riuscito, l'area upload si svuota (come documentato in BUG-UX-008 per il completamento).
+
+**Comportamento attuale (parziale):**  
+Il codice **tenta** di svuotare incrementando `uploader_nonce` e chiamando `st.rerun()`:
+
+```python
+# app.py ~438-457
+st.session_state["uploader_nonce"] += 1
+...
+st.rerun()
+```
+
+Chiave widget: `key=f"uploader_{st.session_state['uploader_nonce']}"`.
+
+**Cause probabili:**
+
+1. **Race con `_poll_queue_refresh`**: ogni 2s un `st.rerun(scope="app")` può intervenire **nella stessa finestra** del click "Accoda", prima o dopo l'incremento `uploader_nonce`, lasciando il widget col vecchio `key` e i file ancora in memoria del browser.
+
+2. **Streamlit `file_uploader`**: il reset via cambio `key` non è immediato su tutti i browser; con `accept_multiple_files=True` il buffer può persistere fino al rerun "pulito".
+
+3. **Click ripetuti mentre i file sono ancora visibili**: l'utente clicca di nuovo "Accoda" credendo che il primo non sia andato a buon fine → alimenta BUG-QUEUE-016 (anche se il DB salta i duplicati con `load_active_queue()`).
+
+4. **Manca feedback persistente**: il messaggio `st.success` scompare al rerun del fragment; restano solo i file nell'uploader → sembra che nulla sia successo.
+
+**Codice coinvolto:**
+
+| File | Rigione |
+|------|---------|
+| `src/sbobinator/ui/app.py` | `uploaded_files` / `uploader_nonce` / `submitted` (~397–461) |
+| `src/sbobinator/ui/app.py` | `_poll_queue_refresh()` — rerun globale ogni 2s |
+| `src/sbobinator/jobs.py` | `is_source_in_active_queue()` — esiste ma **non usato** in UI (duplicata logica inline) |
+
+**Nota:** la deduplica in UI (`any(j.source_name == source_name for j in load_active_queue())`) **funziona a livello DB** nella run verificata; il problema principale è **UX**, non perdita dati.
+
+**Fix proposti (non applicati):**
+
+1. Dopo accodamento: `st.session_state.pop` esplicito + `uploader_nonce += 1` + **disabilitare** il bottone "Accoda" finché `uploaded_files` non è un set nuovo.
+2. Mostrare banner fisso "N file in coda" sopra l'uploader (non solo `st.success` effimero).
+3. Sostituire `st.rerun(scope="app")` del fragment con refresh solo del blocco coda.
+4. Usare `is_source_in_active_queue()` da `jobs.py` + dedup `uploaded_files` per `name` prima del loop.
+5. Opzionale: vincolo DB `UNIQUE(source_name)` per stati `queued|running` (enforcement server-side).
+
+**Come riprodurre (test post-elaborazione):**
+
+1. Carica 4 wav, clicca Accoda una volta.
+2. **Senza ricaricare la pagina**, verifica se i 4 file sono ancora nell'uploader.
+3. Controlla `SELECT id, source_name, status FROM jobs` — confronta con righe nel pannello coda.
+4. Ripeti con un solo file (es. molto-lungo) e doppio click rapido su Accoda.
+
+---
+
+### BUG-SUM-019 — Riassunto mT5 inutilizzabile (token `<extra_id_0>`, ripetizioni, testo nonsense)
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | ✅ Risolto (v0.3.1) — sostituito con `gsarti/it5-small-news-summarization` |
+| **Severità** | Critica (qualità prodotto) |
+| **Segnalazione** | 28/06 benchmark: modalità `abstractive` su 4 campioni; output non professionale |
+
+**Output reali in `data/output/jobs/20260628_114944_*/riassunto.txt`:**
+
+| File | Riassunto mT5 (estratto) |
+|------|--------------------------|
+| breve | `<extra_id_0>...` + ripetizione frase intera |
+| lungo | Wikimedia / `oggi - oggi - oggi` senza senso |
+| medio | `Alberto Cavaliere.` x6 |
+| molto-lungo | Frasi spezzate, non riassunto |
+
+**Causa root:** ~85% scelta nostra (`google/mt5-small` **base**, non fine-tuned summarization); ~10% integrazione (`pipeline("summarization")` + prefisso `summarize:`); ~5% modello Google (prodotto sbagliato per il task, non difettoso). Vedi [google/mt5-small](https://huggingface.co/google/mt5-small): *must be fine-tuned before downstream task*.
+
+**Fix applicato:** `google/mt5-small` rimosso; IT5 fine-tuned italiano; prefisso `summarize:` eliminato; UI rinominata Sintesi / Riassunto (IT5).
+
+---
+
+### BUG-SUM-020 — Qualità riassunti insufficiente per uso produzione
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | 🔍 In analisi — benchmark offline creato, fix non ancora definito |
+| **Severità** | **Critica (qualità prodotto)** |
+| **Segnalazione** | 28/06 — utente: riassunti «non soddisfacenti»; 5 righe su testo da 600 parole che non spiegano il contenuto; rischio rimozione feature se non migliora |
+
+**Sintomi osservati:**
+
+| Problema | Esempio |
+|----------|---------|
+| Riassunto troppo corto | Testo lungo (~600+ parole) → poche frasi in output |
+| Bassa copertura semantica | Punti chiave dell'intervista/trascritto assenti o accennati |
+| IT5 deforma il senso | Output con frasi incoerenti, mix di concetti, finali nonsense (es. job `campione-italiano-lungo`) |
+| Estrattivo = frasi sparse | LexRank seleziona frasi ma non «riassume» in senso umano |
+
+**Cause probabili (da confermare con benchmark):**
+
+1. **IT5 news** (`gsarti/it5-small-news-summarization`) addestrato su articoli giornalistici, non su parlato/trascritti/interviste Wikimedia.
+2. **`estimate_abstractive_lengths` / `max_length`** troppo bassi per testi lunghi.
+3. **Sintesi estrattiva** per design non genera testo nuovo — su monologhi lunghi sembra un taglio, non un riassunto.
+4. **Chunking IT5** (3000 char) + riassunto dei chunk può perdere filo narrativo.
+
+**Strumento di valutazione (senza UI):**
+
+```cmd
+python scripts/summary_benchmark.py
+```
+
+Output: `docs/summary-benchmark/runs/<timestamp>/` — confronto di tutte le combinazioni `extractive|abstractive` × `auto|short|normal|detailed` su ogni `trascrizione.txt` in `data/output/jobs/`.
+
+**Criteri di accettazione (proposta utente):**
+
+- Proporzione lunghezza sensata rispetto al sorgente (non 5 righe fisse su 600 parole).
+- Copertura dei concetti principali leggibile da un umano senza leggere la trascrizione intera.
+- Nessuna deformazione grave del significato.
+
+**Possibili direzioni (non implementate — solo backlog):**
+
+- Modello IT5/wiki o mBART/LED per testi lunghi e parlato.
+- Parametri lunghezza più aggressivi su `detailed` / `auto`.
+- Riassunto gerarchico (map-reduce) con prompt dedicati al parlato.
+- Valutare se mantenere solo sintesi estrattiva + rimuovere IT5 se benchmark fallisce.
+
+---
+
+### BUG-ARCH-020 — Streamlit inadatto a un prodotto in produzione (migrazione UI)
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | 🔧 In corso — migrazione a **FastAPI + HTMX + Jinja2** |
+| **Severità** | **Critica (architettura / UX)** |
+| **Segnalazione** | 28/06 — utente: *«se la UI crea così tanti problemi di usabilità la cambi»*; frustrazione esplicita con Streamlit |
+
+**Sintomi accumulati (tutti legati al modello Streamlit, non al backend jobs):**
+
+| ID | Problema | Causa Streamlit |
+|----|----------|-----------------|
+| BUG-QUEUE-016 | Stesso job mostrato più volte in coda | `st.rerun(scope="app")` + fragment che ridisegna l'intera pagina |
+| BUG-UI-017 | File restano nell'uploader dopo accoda | Reset widget via `key` + rerun globale inaffidabile |
+| BUG-UI-019 | Pulsante **Annulla** non risponde | Race tra poll ogni 2s e click utente |
+| BUG-ENV-018 | `ImportError data_dir` con codice aggiornato | Processi Streamlit stale, cache moduli, istanze multiple porta 8501 |
+| — | Impossibile cambiare riassunto su job già accodati | `session_state` + impostazioni sidebar non legate al job in modo esplicito |
+| — | Sensazione generale di UI «rotta» / non professionale | Paradigma rerun top-down, stato widget opaco, debug difficile |
+
+**Perché Streamlit non va bene qui:**
+
+1. **Rerun globale** — ogni interazione (o poll automatico) riesegue lo script dall'alto; i click si perdono, i widget si duplicano, l'uploader non si svuota.
+2. **Stato implicito** — `session_state`, chiavi widget, fragment: fragile e difficile da testare.
+3. **Produzione** — nessun controllo HTTP reale, difficile deployare dietro reverse proxy, API REST separata impossibile senza duplicare logica.
+4. **Manutenzione** — ogni fix UX è un workaround (`on_click`, `uploader_nonce`, dedup difensivo) invece di comportamento naturale del browser.
+
+**Decisione architetturale:**
+
+| Prima | Dopo |
+|-------|------|
+| Streamlit (`app.py`) | **FastAPI** (`server.py`) + **Jinja2** + **HTMX** (poll coda via `hx-trigger="every 2s"`) |
+| `streamlit run` porta 8501 | `uvicorn sbobinator.ui.server:app` porta 8501 (stesso URL per l'utente) |
+| Click → rerun script | Click → `POST` HTTP → risposta HTML parziale (nessuna race) |
+
+**File coinvolti:**
+
+| File | Azione |
+|------|--------|
+| `src/sbobinator/ui/server.py` | **Nuovo** — app FastAPI |
+| `src/sbobinator/ui/templates/` | **Nuovo** — HTML + partials HTMX |
+| `src/sbobinator/ui/static/style.css` | **Nuovo** — stile (stesso look scuro) |
+| `src/sbobinator/ui/launch.py` | Avvia uvicorn invece di streamlit; `SBOBINATOR_UI_HOST` per Docker |
+| `docker/Dockerfile.*` | `pip install -e ".[ui,summarize]"`, FastAPI |
+| `docker/docker-compose.yml` | `SBOBINATOR_UI_HOST=0.0.0.0`, healthcheck HTTP |
+| `src/sbobinator/ui/app.py` | **Deprecato** — rinominato, non più entry point |
+| `pyproject.toml` | `ui` extra: `fastapi`, `uvicorn`, `jinja2`, `python-multipart` al posto di `streamlit` |
+
+**Backend invariato:** `jobs.py`, `worker.py`, `pipeline.py`, SQLite — solo il layer presentazione cambia.
+
+**Criteri di accettazione migrazione:**
+
+1. Accoda N file → uploader si svuota dopo submit (redirect 303).
+2. Annulla job in coda → funziona al primo click, senza poll che mangia l'evento.
+3. Coda si aggiorna ogni 2s senza ricaricare tutta la pagina.
+4. Storico lavori, download TXT/SRT/riassunto, impostazioni riassunto prima dell'accodamento.
+5. `python scripts/restart_ui.py` avvia la nuova UI su `http://localhost:8501`.
+
+---
+
+### BUG-ENV-018 — ImportError `data_dir` con istanza Streamlit stale
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | 🔧 Parziale |
+| **Severità** | Alta |
+| **Segnalazione** | `cannot import name 'data_dir' from sbobinator.config` con path sorgente corretto |
+
+**Causa root:**  
+Processo Streamlit avviato **prima** di aggiornamenti codice / più istanze su porta 8501 → moduli Python in cache inconsistenti. Il sorgente contiene `data_dir`; l'import fallisce solo nel processo vecchio.
+
+**Fix (v0.3.0):**  
+`process_guard.py`, `restart_ui.py` migliorato, kill porta 8501, `verify_runtime()`, `.streamlit/config.toml` con `fastReruns = false`.
+
+**Residuo:**  
+Serve sempre `python scripts/restart_ui.py` dopo `git pull`, non basta F5 browser.
+
+---
+
+## 3. Bug critici risolti in precedenza
 
 ### BUG-ENV-001 — SSL HuggingFace su Windows
 
@@ -203,7 +475,7 @@ Solo pacchetto base installato (`pip install -e .`), senza `[local]` / `nemo_too
 
 ---
 
-## 3. Bug UI / UX
+## 4. Bug UI / UX
 
 ### BUG-UX-006 — Slider "Frasi nel riassunto" rigido
 
@@ -226,14 +498,16 @@ Progress bar presente ma non distingue "caricamento modello" vs "trascrizione".
 
 ### BUG-UX-008 — `st.rerun()` fa perdere contesto upload
 
-| Stato | ℹ️ Limitazione Streamlit |
-|-------|--------------------------|
+| Stato | 🔍 In analisi (aggiornato 28/06) |
+|-------|----------------------------------|
 
 Dopo completamento, il file uploader si svuota. I risultati sono nello storico lavori, non nell'uploader.
 
+**Aggiornamento 28/06:** l'utente segnala che i file **restano** nell'uploader anche **dopo** l'accodamento (non solo dopo completamento). Vedi **BUG-UI-017** — il nonce + rerun non basta in presenza del fragment di poll.
+
 ---
 
-## 4. Bug ambiente Windows
+## 5. Bug ambiente Windows
 
 ### BUG-WIN-009 — `curl` download interrotto (exit 56)
 
@@ -266,7 +540,7 @@ Modalità "Qualità (mT5)" può fallire con stesso errore SSL.
 
 ---
 
-## 5. Bug architettura / dati
+## 6. Bug architettura / dati
 
 ### BUG-ARCH-012 — Export CLI sovrascrive per `stem` uguale
 
@@ -280,11 +554,10 @@ Modalità "Qualità (mT5)" può fallire con stesso errore SSL.
 
 ### BUG-ARCH-013 — Nessuna coda elaborazione concorrente
 
-| Stato | 📋 Aperto |
-|-------|-----------|
+| Stato | ✅ Risolto (v0.3.0) |
+|-------|----------------------|
 
-Un solo job alla volta; non si può accodare sbobinato2 mentre sbobinato1 gira.  
-**Backlog:** coda asincrona (Redis/SQLite worker) — vedi roadmap.
+Coda SQLite + worker subprocess. Vedi `jobs.py`, `worker.py`. Nuovi bug coda in sezione 2 (BUG-QUEUE-016, BUG-UI-017).
 
 ---
 
@@ -307,22 +580,24 @@ Trascrizioni pre-fix (flat in `data/output/`) non in `index.json`.
 
 ---
 
-## 6. Rischi residui e backlog
+## 7. Rischi residui e backlog
 
 ### Priorità alta (prossime release)
 
 | ID | Task |
 |----|------|
+| P0 | **BUG-ARCH-020** — Migrazione UI Streamlit → FastAPI (in corso) |
+| P1 | **BUG-UI-017** — Svuotare uploader dopo accoda (risolto con redirect POST) |
+| P1 | **BUG-QUEUE-016** — Refresh coda senza rerun globale (risolto con HTMX partial) |
 | P1 | Allineare CLI al registro `jobs/` |
-| P1 | Script migrazione output legacy |
-| P2 | Download offline mT5 per riassunto qualità |
+| P2 | Script migrazione output legacy |
 | P2 | Messaggio progress più dettagliato (fase + tempo) |
 
 ### Priorità media
 
 | ID | Task |
 |----|------|
-| P3 | Coda job (accodare senza attendere) |
+| P3 | Coda job — fix UX duplicati visivi (BUG-QUEUE-016) |
 | P3 | Pulsante "Elimina lavoro" nello storico |
 | P3 | Export ZIP di un lavoro (txt+srt+riassunto) |
 
@@ -336,7 +611,15 @@ Trascrizioni pre-fix (flat in `data/output/`) non in `index.json`.
 
 ---
 
-## 7. Come testare le fix
+## 8. Come testare le fix
+
+### Test BUG-QUEUE-016 / BUG-UI-017 (coda + upload)
+
+1. `python scripts/restart_ui.py` — una sola istanza
+2. Carica 4 file, un solo click "Accoda"
+3. Verifica: uploader **vuoto**; pannello coda con **4 righe distinte** (1 per file)
+4. `python -c "from sbobinator.jobs import load_active_queue; ..."` — stesso conteggio
+5. Con file ancora in uploader, riclicca Accoda → warning "Saltati", **nessuna** nuova riga in DB
 
 ### Test BUG-DATA-002 (storico / no overwrite)
 
@@ -372,6 +655,7 @@ sbobina transcribe data/input/campione-italiano-breve.wav -o data/output
 
 | Data | Modifica |
 |------|----------|
+| 2026-06-28 | BUG-QUEUE-016, BUG-UI-017, BUG-ENV-018; verifica DB benchmark; aggiornamento v0.3.0 |
 | 2026-06-26 | Creazione documento; fix BUG-UI-001, BUG-DATA-002; inventario bug sessione |
 
 ---

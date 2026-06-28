@@ -1,15 +1,18 @@
 # Sbobinator — profilo GPU (NVIDIA CUDA)
+# Build: immagine completa con modelli ASR + IT5 riassunto in /models (~3 GB).
 FROM nvidia/cuda:12.6.0-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV NEMO_CACHE_DIR=/models
+ENV SBOBINATOR_DATA=/data
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3.12 \
     python3.12-venv \
     python3-pip \
     ffmpeg \
+    curl \
     build-essential \
     libsndfile1 \
     && rm -rf /var/lib/apt/lists/* \
@@ -19,15 +22,19 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY src/ src/
+COPY scripts/download_model.py scripts/download_summary_model.py scripts/
 
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu126 \
-    && pip install --no-cache-dir "nemo_toolkit[asr]" streamlit "transformers>=4.40" sentencepiece \
-    && pip install --no-cache-dir -e .
+    && pip install --no-cache-dir "nemo_toolkit[asr]" \
+    && pip install --no-cache-dir -e ".[ui,summarize]" \
+    && mkdir -p /models /data/input /data/output/jobs \
+    && python scripts/download_model.py \
+    && python scripts/download_summary_model.py
 
 EXPOSE 8501
 
-VOLUME ["/data", "/models"]
+VOLUME ["/data"]
 
 ENTRYPOINT ["sbobina"]
 CMD ["ui"]

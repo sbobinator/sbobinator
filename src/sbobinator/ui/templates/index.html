@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sbobinator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <h2>Impostazioni</h2>
+      <form id="settings-form" class="settings-form">
+        <label>Dispositivo
+          <select name="device" form="enqueue-form">
+            <option value="auto" selected>auto</option>
+            <option value="cpu">cpu</option>
+            <option value="cuda">cuda</option>
+          </select>
+        </label>
+        <label>Modello ASR
+          <input type="text" name="model_name" form="enqueue-form" value="{{ default_model }}">
+        </label>
+        <hr>
+        <h3>Riassunto</h3>
+        <label class="checkbox">
+          <input type="checkbox" name="summary_enabled" form="enqueue-form" value="true" checked>
+          Genera riassunto
+        </label>
+        <label>Modalità
+          <select name="summary_mode" form="enqueue-form">
+            <option value="extractive">Sintesi (estrativo)</option>
+            {% if abstractive_ok %}
+            <option value="abstractive">Riassunto (IT5)</option>
+            {% endif %}
+          </select>
+        </label>
+        {% if not abstractive_ok %}
+        <p class="hint">IT5: esegui <code>python scripts/download_summary_model.py</code></p>
+        {% endif %}
+        <label>Lunghezza
+          <select name="summary_length" form="enqueue-form">
+            <option value="auto">Automatica</option>
+            <option value="short">Breve</option>
+            <option value="normal">Normale</option>
+            <option value="detailed">Dettagliato</option>
+          </select>
+        </label>
+      </form>
+      <hr>
+      <h3>I tuoi lavori</h3>
+      <p class="hint">Cartella: <code>{{ jobs_root.name }}/</code></p>
+      {% if jobs %}
+      <nav class="job-list">
+        {% for j in jobs %}
+        <a href="/?job={{ j.id }}" class="job-link{% if j.id == selected_id %} active{% endif %}">
+          {{ j.label }}
+        </a>
+        {% endfor %}
+      </nav>
+      <p class="hint">{{ jobs|length }} totali</p>
+      {% else %}
+      <p class="hint">Nessun lavoro ancora.</p>
+      {% endif %}
+      <footer class="sidebar-footer">
+        <p>Sbobinator v{{ version }}</p>
+        <p class="hint">ffmpeg nel PATH</p>
+      </footer>
+    </aside>
+
+    <main class="main">
+      <header class="hero">
+        <h1>Sbobinator</h1>
+        <p>Trascrizione in italiano · Coda job · File sempre salvati su disco</p>
+      </header>
+
+      {% if flash %}
+      <div class="flash flash-{{ flash_type }}">{{ flash }}</div>
+      {% endif %}
+
+      <section class="stats">
+        <div class="stat-card"><span class="label">Device</span><span class="value">{{ device }}</span></div>
+        <div class="stat-card"><span class="label">Lingua</span><span class="value">IT</span></div>
+        <div class="stat-card"><span class="label">Lavori salvati</span><span class="value">{{ jobs_count }}</span></div>
+        <div class="stat-card"><span class="label">In coda</span><span class="value">{{ active_count }}</span></div>
+      </section>
+
+      <section class="panel">
+        <h2>Coda elaborazione</h2>
+        <div id="queue-panel"
+             hx-get="/partials/queue"
+             hx-trigger="load, every 2s"
+             hx-swap="innerHTML">
+          <p class="hint">Caricamento coda…</p>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Carica file</h2>
+        <p class="hint">Più file vengono accodati e elaborati uno alla volta. Le impostazioni della sidebar valgono per questo accodamento.</p>
+        <form id="enqueue-form" action="/enqueue" method="post" enctype="multipart/form-data" class="upload-form">
+          <input type="file" name="files" multiple accept=".mp4,.mkv,.avi,.mov,.webm,.wav,.mp3,.flac,.m4a,.ogg" required>
+          <button type="submit" class="btn btn-primary">Accoda sbobinatura</button>
+        </form>
+      </section>
+
+      {% if selected_job %}
+        {% include "partials/job_detail.html" %}
+      {% endif %}
+    </main>
+  </div>
+</body>
+</html>

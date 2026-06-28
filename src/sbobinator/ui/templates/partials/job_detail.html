@@ -1,0 +1,70 @@
+<section class="panel job-detail">
+  <h2>
+    {% if selected_job.status == status_failed %}❌ Fallito{% elif selected_job.status in active_statuses %}⏳ In corso{% else %}✅ Risultati{% endif %}
+    — {{ selected_job.source_name }}
+  </h2>
+  <p class="hint">ID: <code>{{ selected_job.id }}</code> · Stato: <strong>{{ selected_job.status }}</strong></p>
+
+  <div class="files-box">
+    <h4>File salvati su disco</h4>
+    <ul>
+      <li><code>📁 {{ selected_job.path.resolve() }}</code></li>
+      {% if selected_job.txt_path().exists() %}
+      <li><code>📝 {{ selected_job.txt_path().resolve() }}</code></li>
+      {% endif %}
+      {% if selected_job.srt_path().exists() %}
+      <li><code>🎬 {{ selected_job.srt_path().resolve() }}</code></li>
+      {% endif %}
+      {% if selected_job.summary_path().exists() %}
+      <li><code>📋 {{ selected_job.summary_path().resolve() }}</code></li>
+      {% endif %}
+    </ul>
+    <form action="/api/open-folder/{{ selected_job.id }}" method="post" onsubmit="event.preventDefault(); fetch(this.action,{method:'POST'}).then(()=>{});">
+      <button type="submit" class="btn btn-secondary">Apri cartella in Esplora file</button>
+    </form>
+  </div>
+
+  {% if selected_job.status == status_failed %}
+  <div class="flash flash-error">{{ selected_job.error or selected_job.progress_message }}</div>
+
+  {% elif selected_job.status in active_statuses %}
+  <p class="info">Segui lo stato nel riquadro <strong>Coda elaborazione</strong> sopra.</p>
+
+  {% elif transcript_text %}
+  <div class="tabs">
+    <details open>
+      <summary>Trascrizione</summary>
+      <textarea readonly rows="16">{{ transcript_text }}</textarea>
+      <p class="hint">{{ transcript_text|length }} caratteri · {{ word_count }} parole</p>
+    </details>
+    <details>
+      <summary>Riassunto</summary>
+      {% if summary_text %}
+      <div class="summary-text">{{ summary_text }}</div>
+      {% elif not selected_job.summary_requested %}
+      <p class="info">Riassunto disattivato per questo lavoro.</p>
+      {% elif selected_job.summary_error %}
+      <p class="warning">Riassunto richiesto ma non generato: {{ selected_job.summary_error }}</p>
+      {% else %}
+      <p class="warning">Riassunto richiesto ma file non trovato.</p>
+      {% endif %}
+    </details>
+    <details>
+      <summary>Download</summary>
+      <div class="download-row">
+        {% if selected_job.txt_path().exists() %}
+        <a class="btn btn-secondary" href="/download/{{ selected_job.id }}/txt">Scarica TXT</a>
+        {% endif %}
+        {% if selected_job.srt_path().exists() %}
+        <a class="btn btn-secondary" href="/download/{{ selected_job.id }}/srt">Scarica SRT</a>
+        {% endif %}
+        {% if selected_job.summary_path().exists() %}
+        <a class="btn btn-secondary" href="/download/{{ selected_job.id }}/summary">Scarica riassunto</a>
+        {% endif %}
+      </div>
+    </details>
+  </div>
+  {% else %}
+  <p class="warning">Trascrizione non ancora disponibile.</p>
+  {% endif %}
+</section>

@@ -1,0 +1,5 @@
+# abstractive / detailed
+# parole sorgente: 292 -> riassunto: 49 (16.8%)
+# frasi: 27 -> 3 | tempo: 6.91s
+
+la storia di roma in versi di alberto cavaliere. il poeta maledetto, dopo la chimica in versi, si è dato alla storia, a farne un poema didascalico. ma lei sa che io non sono alieno in generale dallo scrivere versi e non sono la prima delle mie imprese poetiche.

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sbobinator"
-version = "0.2.0"
+version = "0.3.0"
 description = "Sbobina audio e video in testo con NVIDIA NeMo (italiano)"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -21,7 +21,10 @@ asr = [
     "nemo_toolkit[asr]>=2.0",
 ]
 ui = [
-    "streamlit>=1.40",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.12",
 ]
 summarize = [
     "transformers>=4.40",
@@ -30,12 +33,17 @@ summarize = [
 local = [
     "torch>=2.7",
     "nemo_toolkit[asr]>=2.0",
-    "streamlit>=1.40",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.12",
     "transformers>=4.40",
     "sentencepiece>=0.2",
 ]
 dev = [
     "ruff>=0.8",
+    "mkdocs>=1.6",
+    "mkdocs-material>=9.5",
 ]
 
 [project.scripts]
@@ -43,6 +51,9 @@ sbobina = "sbobinator.cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+sbobinator = ["ui/templates/**/*", "ui/static/**/*"]
 
 [tool.ruff]
 line-length = 100

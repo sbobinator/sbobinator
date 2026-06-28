@@ -1,0 +1,19 @@
+---
+description: Vietato script PowerShell — antivirus li blocca su Windows
+alwaysApply: true
+---
+
+# No script PowerShell (antivirus)
+
+Su questo progetto **non usare script `.ps1`**. L'antivirus dell'utente li blocca.
+
+## Usare invece
+
+| Operazione | Comando |
+|------------|---------|
+| Installazione | `python scripts/install_local.py` |
+| Download modello | `python scripts/download_model.py` |
+| Campioni test | `python scripts/generate_samples.py` |
+| Avvio UI | `start.bat` o `sbobina ui` |
+
+Gli script `.ps1` sono stati **rimossi** dal repo. Solo Python + `.bat` per avvio.

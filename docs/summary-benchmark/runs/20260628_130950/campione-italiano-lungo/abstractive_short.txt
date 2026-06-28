@@ -1,0 +1,5 @@
+# abstractive / short
+# parole sorgente: 641 -> riassunto: 84 (13.1%)
+# frasi: 29 -> 3 | tempo: 11.39s
+
+erika, nota anche come utente elitre, è un’attivista di wikimedia ed è orgogliosa di conoscere quanto nel tempo la sua esperienza nel mondo wiki media abbia cambiato il nostro modo di intendere molte cose, e di poter contribuire al meglio delle loro possibilità. ma nessuno di questi siti ha queste cinque cose contemporaneamente, a parte wikipedia, appunto. l’internet di oggi è il futuro di tutti i vip, di vip che non vogliono mai alterare lo status quo, che poi i loro giocattoli si romperanno.

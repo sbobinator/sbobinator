@@ -1,12 +1,16 @@
 @echo off
 cd /d "%~dp0"
 
-if not exist ".venv\Scripts\python.exe" (
-    echo Ambiente non trovato. Esegui prima: scripts\install-local.ps1
+if exist ".venv\Scripts\sbobina.exe" (
+    echo Avvio Sbobinator ^(virtualenv^)...
+    ".venv\Scripts\python.exe" scripts\restart_ui.py
+) else if exist "C:\Python313\python.exe" (
+    echo Avvio Sbobinator ^(Python313^)...
+    "C:\Python313\python.exe" scripts\restart_ui.py
+) else (
+    echo Ambiente non trovato. Esegui prima:
+    echo   python scripts\install_local.py
     pause
     exit /b 1
 )
-
-echo Avvio Sbobinator...
-".venv\Scripts\sbobina.exe" ui
 pause

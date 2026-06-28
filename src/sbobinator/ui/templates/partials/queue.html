@@ -1,0 +1,35 @@
+{% if active %}
+<p class="hint">{{ active|length }} lavoro/i attivi ({{ queued_count }} in attesa) · <code>{{ jobs_root }}</code></p>
+{% if queued_count > 1 %}
+<form hx-post="/api/jobs/cancel-all-queued" hx-target="#queue-panel" hx-swap="innerHTML" style="margin-bottom:0.75rem">
+  <button type="submit" class="btn btn-secondary">Annulla tutti in coda</button>
+</form>
+{% endif %}
+<div class="queue-list">
+  {% for job in active %}
+  <div class="queue-item">
+    <div class="queue-main">
+      <strong>{% if job.status == status_running %}▶️{% else %}⏳{% endif %} {{ job.source_name }}</strong>
+      <span class="muted">{% if job.status == status_running %}in elaborazione{% else %}in coda{% endif %}</span>
+      <div class="progress-bar"><div class="progress-fill" style="width: {{ job.progress_pct }}%"></div></div>
+      <span class="hint">{{ job.progress_message or job.status }}</span>
+      <span class="hint"><code>{{ job.path.name }}</code>
+        {% if job.summary_requested %}· riassunto: {% if job.summary_mode == 'abstractive' %}IT5{% else %}sintesi{% endif %}{% else %}· senza riassunto{% endif %}
+      </span>
+    </div>
+    <div class="queue-actions">
+      {% if job.status == status_queued %}
+      <button type="button" class="btn btn-secondary"
+              hx-post="/api/jobs/{{ job.id }}/cancel"
+              hx-target="#queue-panel"
+              hx-swap="innerHTML">Annulla</button>
+      {% elif job.status == status_running %}
+      <span class="muted">non annullabile</span>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<p class="hint">Nessun lavoro in coda o in elaborazione.</p>
+{% endif %}

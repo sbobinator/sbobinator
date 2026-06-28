@@ -1,8 +1,12 @@
 import logging
 import re
+import threading
+from collections.abc import Callable
 from pathlib import Path
 
 from sbobinator.config import TranscribeConfig, local_model_path
+
+ProgressCallback = Callable[[str, float, str], None]
 from sbobinator.export import TranscriptResult, TranscriptSegment
 from sbobinator.extract import get_duration_sec, prepare_audio, split_audio_chunks
 
@@ -10,6 +14,26 @@ logger = logging.getLogger(__name__)
 
 _model = None
 _model_id: str | None = None
+_import_lock = threading.Lock()
+_asr_imports_ready = False
+
+
+def warmup_asr() -> None:
+    """Importa NeMo nel thread corrente (deve essere il main prima del worker)."""
+    global _asr_imports_ready
+    with _import_lock:
+        if _asr_imports_ready:
+            return
+        try:
+            import nemo.collections.asr  # noqa: F401
+            import torch  # noqa: F401
+        except ImportError as exc:
+            raise ImportError(
+                "Dipendenze ASR mancanti. Installa con:\n"
+                "  pip install -e '.[asr]'\n"
+                "oppure usa Docker: docker compose --profile cpu run --rm sbobinator"
+            ) from exc
+        _asr_imports_ready = True
 
 
 def _get_model(config: TranscribeConfig):
@@ -17,6 +41,8 @@ def _get_model(config: TranscribeConfig):
 
     if _model is not None and _model_id == config.model_name:
         return _model
+
+    warmup_asr()
 
     try:
         import nemo.collections.asr as nemo_asr
@@ -43,7 +69,7 @@ def _get_model(config: TranscribeConfig):
                 raise RuntimeError(
                     "Download modello fallito per errore SSL (comune su Windows).\n"
                     "Scarica il modello manualmente con:\n"
-                    "  powershell -ExecutionPolicy Bypass -File scripts\\download-model.ps1\n"
+                    "  python scripts/download_model.py\n"
                     "Poi riprova."
                 ) from exc
             raise
@@ -153,16 +179,29 @@ def transcribe(
     input_path: Path,
     config: TranscribeConfig | None = None,
     work_dir: Path | None = None,
+    on_progress: ProgressCallback | None = None,
 ) -> TranscriptResult:
     config = config or TranscribeConfig()
+
+    if on_progress:
+        on_progress("load_model", 15, "Caricamento modello NeMo...")
+
     model = _get_model(config)
+
+    if on_progress:
+        on_progress("extract", 20, "Estrazione audio...")
 
     wav_path, _ = prepare_audio(input_path, work_dir=work_dir)
     duration = get_duration_sec(wav_path)
 
     if duration <= config.chunk_threshold_sec:
         logger.info("Trascrizione file (%.0f s)", duration)
-        return _transcribe_file(model, wav_path)
+        if on_progress:
+            on_progress("transcribe", 50, f"Trascrizione in corso ({duration:.0f} s)...")
+        result = _transcribe_file(model, wav_path)
+        if on_progress:
+            on_progress("transcribe", 80, "Trascrizione completata")
+        return result
 
     logger.info(
         "File lungo (%.0f s): trascrizione a chunk da %d s",
@@ -180,10 +219,16 @@ def transcribe(
     )
 
     results: list[tuple[float, TranscriptResult]] = []
+    total = len(chunks)
     for i, (chunk_path, offset) in enumerate(chunks, start=1):
-        logger.info("Chunk %d/%d (offset %.0f s)", i, len(chunks), offset)
+        logger.info("Chunk %d/%d (offset %.0f s)", i, total, offset)
+        if on_progress:
+            pct = 25 + 55 * (i / total)
+            on_progress("transcribe", pct, f"Trascrizione chunk {i}/{total}...")
         results.append((offset, _transcribe_file(model, chunk_path)))
 
+    if on_progress:
+        on_progress("transcribe", 80, "Trascrizione completata")
     return _merge_chunk_results(results)
 
 

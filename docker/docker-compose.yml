@@ -1,3 +1,6 @@
+# Volumi: solo ../data (input + output/jobs sul host).
+# Modelli ASR + IT5 riassunto sono nell'immagine Docker (/models), scaricati al build.
+# UI: FastAPI + uvicorn (sbobinator.ui.server), non più Streamlit.
 services:
   sbobinator-cpu:
     build:
@@ -9,10 +12,17 @@ services:
       - "8501:8501"
     volumes:
       - ../data:/data
-      - ../models:/models
     environment:
       - NEMO_CACHE_DIR=/models
+      - SBOBINATOR_DATA=/data
+      - SBOBINATOR_UI_HOST=0.0.0.0
     command: ui --port 8501
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8501/partials/queue"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
 
   sbobinator-gpu:
     build:
@@ -20,8 +30,6 @@ services:
       dockerfile: docker/Dockerfile.gpu
     image: sbobinator:gpu
     profiles: ["gpu"]
-    ports:
-      - "8501:8501"
     deploy:
       resources:
         reservations:
@@ -29,9 +37,18 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    ports:
+      - "8501:8501"
     volumes:
       - ../data:/data
-      - ../models:/models
     environment:
       - NEMO_CACHE_DIR=/models
+      - SBOBINATOR_DATA=/data
+      - SBOBINATOR_UI_HOST=0.0.0.0
     command: ui --port 8501
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8501/partials/queue"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s

@@ -1,0 +1,100 @@
+# MkDocs — documentazione Sbobinator (GitHub Pages)
+# Build locale:  pip install -r docs/requirements.txt && mkdocs serve
+# Deploy GitHub: push su main → workflow .github/workflows/docs.yml
+
+site_name: Sbobinator
+site_description: Trascrizione audio/video in italiano con NVIDIA NeMo Parakeet
+site_author: Sbobinator
+site_url: https://sbobinator.github.io/sbobinator/
+repo_url: https://github.com/sbobinator/sbobinator
+repo_name: sbobinator/sbobinator
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: it
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Modalità scura
+    - scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Modalità chiara
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - toc.follow
+
+plugins:
+  - search:
+      lang: it
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Per iniziare:
+      - getting-started/overview.md
+      - getting-started/installation.md
+      - getting-started/quickstart.md
+      - getting-started/models.md
+  - Guida utente:
+      - user-guide/web-ui.md
+      - user-guide/cli.md
+      - user-guide/jobs-queue.md
+      - user-guide/summarization.md
+      - user-guide/file-formats.md
+  - Architettura:
+      - architecture/overview.md
+      - architecture/data-flow.md
+      - architecture/worker.md
+      - architecture/storage.md
+  - Deploy:
+      - deployment/local-windows.md
+      - deployment/docker.md
+      - deployment/environment.md
+  - Operatività:
+      - operations/scripts.md
+      - operations/benchmark.md
+      - operations/maintenance.md
+  - Risoluzione problemi:
+      - troubleshooting/common-issues.md
+      - troubleshooting/ssl-windows.md
+  - Sviluppo:
+      - development/project-structure.md
+      - development/contributing.md
+  - Riferimento:
+      - reference/configuration.md
+      - reference/cli-reference.md
+      - reference/modules.md
+      - reference/job-schema.md
+      - reference/faq.md
+      - reference/glossary.md
+      - reference/licenses.md
+  - Changelog: changelog.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/sbobinator/sbobinator

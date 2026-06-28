@@ -1,0 +1,5 @@
+# abstractive / short
+# parole sorgente: 19 -> riassunto: 15 (78.9%)
+# frasi: 2 -> 2 | tempo: 2.62s
+
+il test di trascrizione in italiano con sbobinator. la qualità dipende dal modello nemo perakate.
