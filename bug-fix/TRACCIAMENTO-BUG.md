@@ -295,6 +295,8 @@ Output: `docs/summary-benchmark/runs/<timestamp>/` — confronto di tutte le com
 - Riassunto gerarchico (map-reduce) con prompt dedicati al parlato.
 - Valutare se mantenere solo sintesi estrattiva + rimuovere IT5 se benchmark fallisce.
 
+**→ Roadmap completa LLM locale:** vedi [`FIX-RIASSUNTO-LLM.md`](FIX-RIASSUNTO-LLM.md) (decisione 28/06/2026: sostituire approccio con Qwen CPU, gate 16 GB, analisi token).
+
 ---
 
 ### BUG-ARCH-020 — Streamlit inadatto a un prodotto in produzione (migrazione UI)
