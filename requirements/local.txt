@@ -1,0 +1,3 @@
+# Installazione completa: ASR + UI web + riassunto LLM (cloud + Qwen locale)
+# Uso: pip install -r requirements/local.txt
+-e .[local]

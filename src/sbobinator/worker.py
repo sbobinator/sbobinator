@@ -61,8 +61,10 @@ def _clear_worker_pid() -> None:
 
 def worker_loop(poll_interval: float = 1.0) -> None:
     """Loop principale: prende job dalla coda e li elabora uno alla volta."""
+    from sbobinator.http_ssl import ensure_ssl
     from sbobinator.transcribe import warmup_asr
 
+    ensure_ssl()
     warmup_asr()
     _write_worker_pid(os.getpid())
     recovered = recover_orphaned_running_jobs()

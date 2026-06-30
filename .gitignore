@@ -30,6 +30,7 @@ models/*
 # Env
 .env
 .env.local
+data/.secrets/
 
 # OS
 .DS_Store

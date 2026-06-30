@@ -55,15 +55,17 @@ def main() -> int:
     )
 
     print("Installazione Sbobinator con tutte le dipendenze...")
-    run([str(VENV_PY), "-m", "pip", "install", "-e", ".[local]"])
+    run([str(VENV_PY), "-m", "pip", "install", "-r", "requirements/local.txt"])
 
     print("\n=== Installazione completata ===\n")
     print("Avvia l'interfaccia web con:")
     print("  start.bat")
     print("  oppure: sbobina ui")
     print("\nPrimo avvio — scarica i modelli:")
-    print("  python scripts/download_model.py          (~2.5 GB, trascrizione)")
-    print("  python scripts/download_summary_model.py  (~300 MB, riassunto mT5, opzionale)")
+    print("  python scripts/download_model.py           (~2.5 GB, trascrizione ASR)")
+    print("  python scripts/download_summary_llm.py     (~2 GB, Qwen locale, opzionale)")
+    print("\nRiassunto cloud (DeepSeek, OpenAI, …): configura API key in")
+    print("  http://localhost:8501/settings/summary")
     return 0
 
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## In sviluppo — Riassunto LLM multi-provider
+
+### Aggiunto
+
+- Riassunto LLM: DeepSeek, OpenAI, Gemini, Claude, Kimi, Qwen locale
+- Pagina `/settings/summary` per API key e stato motori
+- `truststore` per SSL API cloud su Windows
+- `requirements/` (alias pip → `pyproject.toml`)
+- `scripts/download_summary_llm.py`, `scripts/summary_benchmark.py --provider`
+- `.env.example`
+
+### Modificato
+
+- UI FastAPI (non più Streamlit)
+- Docker: solo ASR in immagine, no IT5
+- `pip install -r requirements/local.txt` in `install_local.py`
+
+### Rimosso / deprecato
+
+- LexRank e IT5 come riassunto prodotto
+- `transformers` / `sentencepiece` dalle dipendenze
+- `download_summary_model.py` (deprecato)
+
+---
+
 ## 0.3.0 — Coda job e worker
 
 ### Aggiunto

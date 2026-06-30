@@ -7,7 +7,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from sbobinator.config import SummaryLength, SummaryMode, TranscribeConfig
+from sbobinator.config import SummaryLength, TranscribeConfig
 from sbobinator.export import export_srt, export_summary_text, export_txt
 from sbobinator.jobs import (
     STATUS_COMPLETED,
@@ -17,7 +17,8 @@ from sbobinator.jobs import (
     update_job,
     update_job_progress,
 )
-from sbobinator.summarize import summarize
+from sbobinator.summarize import summarize, unload_summary_models
+from sbobinator.summarize_providers.registry import provider_label
 from sbobinator.transcribe import transcribe, unload_model
 
 logger = logging.getLogger(__name__)
@@ -63,21 +64,35 @@ def run_pipeline(job_id: str) -> None:
         job.transcript_chars = len(result.text)
 
         if job.summary_requested and result.text.strip():
-            _progress(job_id, "summarize", 90, "Generazione riassunto...")
+            provider_id = job.summary_provider or None
+            label = provider_label(provider_id) if provider_id else "LLM"
+            _progress(job_id, "summarize", 90, f"Generazione riassunto ({label})...")
             unload_model()
             try:
+
+                def on_summary_progress(phase: str, pct: float, message: str) -> None:
+                    _progress(job_id, phase, pct, message)
+
                 summary = summarize(
                     result.text,
-                    mode=SummaryMode(job.summary_mode),
+                    provider=provider_id,
                     length=SummaryLength(job.summary_length),
+                    model=job.summary_model or None,
+                    on_progress=on_summary_progress,
                 )
                 export_summary_text(summary.text, job.summary_path())
                 job.has_summary = True
                 job.summary_error = ""
+                job.summary_provider = summary.provider
+                job.summary_model = summary.model
+                job.summary_strategy = summary.strategy
+                job.summary_input_tokens = summary.input_tokens
             except Exception as exc:
                 logger.exception("Riassunto fallito per job %s", job_id)
                 job.has_summary = False
                 job.summary_error = str(exc)
+            finally:
+                unload_summary_models()
 
         job.status = STATUS_COMPLETED
         job.phase = "done"

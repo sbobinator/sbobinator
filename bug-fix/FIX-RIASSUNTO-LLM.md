@@ -2,441 +2,518 @@
 
 > **File:** `bug-fix/FIX-RIASSUNTO-LLM.md`  
 > **Creato:** 2026-06-28  
+> **Aggiornato:** 2026-06-28 (multi-provider + design UI)  
 > **Stato:** 📋 Pianificazione — **nessuna implementazione codice** finché non approvato dopo benchmark  
-> **Correlato:** `BUG-SUM-019` (mT5), `BUG-SUM-020` (qualità generale), `docs/summary-benchmark/`
+> **Correlato:** `BUG-SUM-019`, `BUG-SUM-020`, `docs/summary-benchmark/`
 
 ---
 
 ## 1. Executive summary
 
-La feature **riassunto** in Sbobinator **non è accettabile in produzione** nello stato attuale (sintesi estrattiva LexRank + IT5 news). I output non sono veri riassunti: sono tagli di frasi o testi deformati/inventati.
+La feature **riassunto** in Sbobinator **non è accettabile in produzione** nello stato attuale (LexRank + IT5 news). Va **cambiata completamente**.
 
-**Decisione di principio (utente, 28/06/2026):**
+**Decisioni di principio (utente):**
 
-- L’approccio attuale è **sbagliato** e va **cambiato completamente**.
-- Se offriamo riassunto, deve essere **fatto bene** — altrimenti meglio **non offrirlo**.
-- Direzione scelta: **LLM locale** (non API cloud per ora).
-- Vincoli hardware: **solo CPU** (GPU in un secondo momento).
-- Soglia minima proposta: **16 GB RAM** — sotto questa soglia il riassunto **non si offre**.
-- L’utente con hardware sufficiente **sceglie** se generare il riassunto, sapendo che **richiede molto più tempo** della sola trascrizione.
+| # | Decisione |
+|---|-----------|
+| 1 | Se offriamo riassunto, deve essere **fatto bene** — altrimenti non offrirlo |
+| 2 | Motore: **LLM con prompt dedicato** (non modelli news / non LexRank come «riassunto») |
+| 3 | **L’utente sceglie chi genera il riassunto** — più margini su hardware e preferenze |
+| 4 | Riassunto sempre **opt-in** (costa tempo; su locale costa molta CPU) |
 
-**Blocco esplicito:** nessuna modifica al codice applicativo finché non si completa valutazione scientifica (token, RAM, benchmark LLM) e approvazione utente.
+**Provider supportati (target prodotto):**
+
+| ID | Provider | Dove gira | Chi paga / cosa serve |
+|----|----------|-----------|------------------------|
+| `local` | **LLM locale** (Qwen GGUF) | PC utente, CPU | RAM ≥ 16 GB, modello in `models/` |
+| `openai` | **OpenAI** API | Cloud | API key utente |
+| `gemini` | **Google Gemini** API | Cloud | API key utente |
+| `claude` | **Anthropic Claude** API | Cloud | API key utente |
+| `deepseek` | **DeepSeek** API | Cloud | API key utente |
+| `kimi` | **Moonshot Kimi** API | Cloud | API key utente |
+
+**Perché multi-provider:** un solo motore non copre tutti gli utenti.
+
+- PC **< 16 GB** o CPU lenta → riassunto **locale non offerto**, ma **cloud sì** (con sua API key)
+- Utente **privacy / offline** → **locale**
+- Utente che vuole **qualità massima e velocità** → **Claude / GPT / Gemini** (a pagamento)
+- Utente che vuole **costo basso** → **DeepSeek / Kimi** o locale
+
+**Blocco esplicito:** nessuna modifica al codice applicativo finché non si completa benchmark (locale + almeno 2 cloud) e approvazione utente.
 
 ---
 
-## 2. Cronologia del problema
+## 2. Cronologia
 
 | Data | Evento |
 |------|--------|
-| Pre-28/06 | Riassunto con `google/mt5-small` base → output inutilizzabile (`<extra_id_0>`, ripetizioni) |
-| 28/06 | Sostituito con `gsarti/it5-small-news-summarization` (IT5 news) |
-| 28/06 | Utente insoddisfatto: riassunti troppo corti, non spiegano il contenuto |
-| 28/06 | Creato `scripts/summary_benchmark.py` + run `docs/summary-benchmark/runs/20260628_130950/` |
-| 28/06 | Valutazione IA su tutti i campioni: **nessuna variante è un vero riassunto** |
-| 28/06 | Utente: «questa feature così non va» — serve cambio approccio, no patch |
-| 28/06 | Scelta strategica: **LLM locale**, CPU, gate 16 GB, opt-in utente |
-| 28/06 | Discussione approfondita su **token in input**, contesto, RAM, map-reduce |
+| Pre-28/06 | mT5 base → output inutilizzabile |
+| 28/06 | IT5 news → ancora insoddisfacente |
+| 28/06 | Benchmark LexRank/IT5 → nessun vero riassunto |
+| 28/06 | Scelta LLM locale (Qwen), CPU, gate 16 GB |
+| 28/06 | Analisi token in input, map-reduce, KV cache |
+| 28/06 | **Espansione:** scelta provider multipli (locale + 5 API cloud); design UI |
 
 ---
 
-## 3. Stato attuale del codice (da sostituire, non da patchare)
+## 3. Stato attuale del codice (da sostituire)
 
-### 3.1 Sintesi estrattiva (`extractive`)
+| Componente | Stato | Destino |
+|------------|-------|---------|
+| `extractive` (LexRank) | Non è un riassunto | Rimuovere dall’etichetta «riassunto» o eliminare |
+| `abstractive` (IT5 news) | Qualità inaccettabile | **Rimuovere** |
+| `summarize.py` | Monolitico, 2 modalità | Refactor → **provider abstraction** |
+| UI sidebar | «Sintesi / Riassunto IT5» | **Selettore provider** + lunghezza + opt-in |
 
-- **Motore:** LexRank semplificato in `src/sbobinator/summarize.py`
-- **Comportamento:** seleziona frasi intere dal testo originale
-- **Non è un riassunto:** è un **taglio / antologia** senza filo narrativo
-- **Pro:** veloce, offline, zero modelli extra
-- **Contro:** su monologhi lunghi sembra copia-incolla a salti; manca chi/cosa/contesto
+Benchmark di riferimento: `docs/summary-benchmark/runs/20260628_130950/`
 
-### 3.2 Riassunto astrattivo (`abstractive`)
-
-- **Motore:** `gsarti/it5-small-news-summarization` via `transformers` pipeline
-- **Addestramento:** articoli di **news** in italiano
-- **Input:** trascritti **parlati** (interviste, audio Wikimedia, ecc.)
-- **Problemi osservati:**
-  - Output troppo corto (es. 641 parole → 3–4 frasi)
-  - Deformazione del senso (es. inversione posizione su «VIP/elitisti»)
-  - Allucinazioni (es. «una delle persone più influenti al mondo»)
-  - Parametro `detailed` non cambia quasi nulla su testi lunghi
-  - Chunking a 3000 caratteri senza merge intelligente
-
-### 3.3 Conclusione tecnica
-
-Non è un problema di `max_length` o UI. È **scelta errata di metodo e modello** per il caso d’uso (trascrizioni italiane lunghe).
+**Criteri qualità (invariati):** chi/cosa/contesto, punti principali, autosufficiente, niente invenzioni, niente ribaltamento del senso. Vedi §4 in storico benchmark nel repo.
 
 ---
 
-## 4. Benchmark esistente (28/06/2026)
+## 4. Architettura multi-provider (backend)
 
-### 4.1 Strumento
+### 4.1 Principio: un’interfaccia, N implementazioni
+
+```
+                    ┌─────────────────────┐
+                    │   summarize.py      │
+                    │   (orchestratore)   │
+                    └──────────┬──────────┘
+                               │
+                    ┌──────────▼──────────┐
+                    │  SummaryProvider    │  ← protocollo / ABC
+                    │  .summarize(text)   │
+                    │  .estimate_tokens() │
+                    │  .is_available()    │
+                    └──────────┬──────────┘
+         ┌─────────┬──────────┼──────────┬─────────┬─────────┐
+         ▼         ▼          ▼          ▼         ▼         ▼
+    LocalQwen   OpenAI    Gemini    Claude   DeepSeek   Kimi
+    (llama.cpp) (API)     (API)     (API)    (API)      (API)
+```
+
+**Responsabilità orchestratore:**
+
+1. Conteggio token input (tokenizer appropriato per provider)
+2. Scelta strategia **single-pass** vs **map-reduce** (soprattutto locale; cloud spesso contesto ampio)
+3. Prompt system + user unificato (adattato leggermente per provider se serve)
+4. Gestione errori (API, timeout, OOM locale) → `summary_error` su job
+5. **Mai** loggare API key o testo completo in log di produzione
+
+### 4.2 Modulo file proposti (implementazione futura)
+
+| Path | Ruolo |
+|------|--------|
+| `src/sbobinator/summarize.py` | API pubblica `summarize()`, map-reduce |
+| `src/sbobinator/summarize_providers/base.py` | `SummaryProvider`, `SummaryRequest`, `SummaryResult` |
+| `src/sbobinator/summarize_providers/local_qwen.py` | llama.cpp / GGUF |
+| `src/sbobinator/summarize_providers/openai.py` | OpenAI Chat Completions |
+| `src/sbobinator/summarize_providers/gemini.py` | Google Generative AI |
+| `src/sbobinator/summarize_providers/anthropic.py` | Claude Messages API |
+| `src/sbobinator/summarize_providers/deepseek.py` | DeepSeek (OpenAI-compatible) |
+| `src/sbobinator/summarize_providers/moonshot.py` | Kimi / Moonshot API |
+| `src/sbobinator/summary_config.py` | Lettura API key, modello default per provider, path locale |
+| `scripts/download_summary_llm.py` | Download GGUF Qwen in `models/` |
+| `scripts/summary_benchmark.py` | Esteso: `--provider local|openai|...` |
+
+### 4.3 Modello job (campi da aggiungere)
+
+Oggi: `summary_mode`, `summary_length`, `summary_requested`, `summary_error`.
+
+**Proposta:**
+
+| Campo | Tipo | Esempio | Note |
+|-------|------|---------|------|
+| `summary_provider` | string | `local`, `openai`, `claude`, … | Scelto **all’accodamento** |
+| `summary_model` | string | `qwen2.5-3b`, `gpt-4o-mini`, … | Opzionale; default per provider |
+| `summary_length` | string | `auto` / `short` / `normal` / `detailed` | Invariato |
+| `summary_input_tokens` | int | 984 | Per diagnostica |
+| `summary_strategy` | string | `single` / `map_reduce` | Trasparenza |
+
+**Regola:** impostazioni sidebar valgono **solo al momento dell’accodamento** (come oggi). Non modificabili su job già in coda.
+
+### 4.4 Configurazione API key (sicurezza)
+
+| Dove | Cosa |
+|------|------|
+| **File locale utente** | `data/.secrets/summary_keys.json` o variabili env `SBOBINATOR_OPENAI_API_KEY`, ecc. |
+| **Mai in git** | `.gitignore` su `data/.secrets/` |
+| **Mai in job.json** | Solo provider id, non la key |
+| **UI** | Campo password mascherato in **Impostazioni → Riassunto → API**; salvataggio server-side nel file secrets |
+| **Docker** | Env vars nel compose (opzionale) |
+
+Validazione: pulsante «Test connessione» per provider cloud (chiamata minima) prima di accodare.
+
+---
+
+## 5. Matrice provider (studio preliminare)
+
+> Modelli API: nomi indicativi — da confermare al momento dell’implementazione (API evolvono).
+
+| Provider | Modello default proposto | Contesto input ~ | Italiano | Velocità | Costo | Privacy |
+|----------|--------------------------|------------------|----------|----------|-------|---------|
+| **local** (Qwen 3B Q4) | `Qwen2.5-3B-Instruct` | 8K (`n_ctx` configurabile) | Buono | Lenta (CPU) | Gratis | Massima |
+| **openai** | `gpt-4o-mini` | 128K | Ottimo | Veloce | Basso/medio | Cloud |
+| **gemini** | `gemini-2.0-flash` | 1M (teorico) | Ottimo | Veloce | Basso | Cloud |
+| **claude** | `claude-3-5-haiku` | 200K | Ottimo | Veloce | Medio | Cloud |
+| **deepseek** | `deepseek-chat` | 64K | Buono | Veloce | Molto basso | Cloud |
+| **kimi** | `moonshot-v1-8k` / `32k` | 8K–32K | Buono (cinese/IT) | Veloce | Basso | Cloud |
+
+**Note strategiche:**
+
+- **Locale:** unico per offline; gate 16 GB RAM; map-reduce per audio lunghi
+- **Cloud:** nessun gate RAM per il riassunto; serve rete + API key; contesti grandi → meno map-reduce, più qualità
+- **DeepSeek / Kimi:** utili per utenti price-sensitive; benchmark obbligatorio su italiano parlato
+- **Claude / GPT / Gemini:** candidati «qualità premium» in UI
+
+### 5.1 Disponibilità per profilo utente (logica prodotto)
+
+```
+ALL'AVVIO / PRIMA DELL'ACCODA:
+
+  SE summary_provider == "local":
+      SE RAM < 16 GB → DISABILITATO ("Richiede 16 GB RAM")
+      SE modello GGUF assente → DISABILITATO ("Esegui download_summary_llm.py")
+  ALTRIMENTI SE provider cloud:
+      SE API key mancante → DISABILITATO ("Inserisci API key in Impostazioni")
+      SE test connessione fallito → WARNING (non bloccare se utente accetta)
+```
+
+L’utente con **8 GB RAM** può comunque sbobinare e usare **OpenAI/Claude/…** se ha la key.
+
+---
+
+## 6. Token in input e strategie (tutti i provider)
+
+### 6.1 Perché resta critico
+
+Anche GPT-4 con testo troncato produce riassunti scarsi. Il benchmark deve riportare **token input** per ogni trascrizione.
+
+### 6.2 Stima campioni attuali (~900–2100 token)
+
+Entrano in single-pass per **tutti** i provider (locale 8K compreso).
+
+### 6.3 Audio lunghi (produzione)
+
+| Durata | Token ~ | Locale 8K | Cloud 128K+ |
+|--------|---------|-----------|-------------|
+| 30 min | 4K–7K | map-reduce o 16K `n_ctx` | single-pass |
+| 1 h | 8K–14K | map-reduce obbligatorio | single-pass (quasi sempre) |
+| 2 h | 16K–28K | map-reduce multi-step | single-pass o 1–2 chunk |
+
+**Vantaggio cloud:** meno chunk → meno perdita di filo narrativo → **migliore qualità potenziale** su file lunghi.
+
+### 6.4 Map-reduce (condiviso)
+
+```
+1. Spezza per frasi/paragrafi (~3K token, overlap 150–200 token)
+2. Riassunto chunk (stesso provider)
+3. Combina riassunti parziali
+4. Se combinato > soglia → riassunto finale
+```
+
+Parametri diversi per `local` (chunk piccoli) vs `cloud` (chunk grandi o intero testo).
+
+---
+
+## 7. LLM locale (provider `local`)
+
+Invariato rispetto alla versione precedente del documento, con ruolo di **un provider tra molti**.
+
+| Aspetto | Scelta |
+|---------|--------|
+| Modello default | **Qwen2.5-3B-Instruct** GGUF Q4_K_M |
+| Runtime | llama.cpp / `llama-cpp-python` |
+| RAM min | **16 GB** sistema |
+| CPU | Sì (fase 1); GPU opzionale fase 2 |
+| `n_ctx` default | **8192** |
+| Tempi | ~3–8 min (testo medio); fino a 20+ min con map-reduce |
+
+Tier opzionale 7B solo su 32 GB, profilo «qualità lenta».
+
+---
+
+## 8. Design UI (FastAPI + sidebar) — usabilità
+
+> Obiettivo: scelta **chiara** del motore riassunto, senza confusione con la vecchia «Sintesi / IT5».
+
+### 8.1 Struttura sidebar — sezione «Riassunto»
+
+```
+┌─────────────────────────────────────────┐
+│  RIASSUNTO                              │
+├─────────────────────────────────────────┤
+│  [✓] Genera riassunto dopo trascrizione │
+│                                         │
+│  Motore:                                 │
+│  ┌─────────────────────────────────┐  │
+│  │ ▼ Locale (Qwen) — offline         │  │  ← select
+│  └─────────────────────────────────┘  │
+│     Opzioni:                            │
+│     • Locale (Qwen) — offline, lento    │
+│     • OpenAI — richiede API key         │
+│     • Google Gemini — richiede API key  │
+│     • Anthropic Claude — API key        │
+│     • DeepSeek — API key                │
+│     • Moonshot Kimi — API key          │
+│                                         │
+│  Lunghezza:  [ Automatica ▼ ]           │
+│                                         │
+│  ── Stato motore ──                     │
+│  🟢 Locale: pronto (Qwen 3B)            │  ← dinamico
+│  oppure                                   │
+│  🔴 Locale: richiede 16 GB RAM (hai 8)  │
+│  🟡 OpenAI: inserisci API key →         │
+│                                         │
+│  [ Impostazioni API cloud… ]            │  ← link/modal
+└─────────────────────────────────────────┘
+```
+
+### 8.2 Pannello «Impostazioni API cloud» (stessa sidebar o pagina `/settings/summary`)
+
+```
+┌─────────────────────────────────────────┐
+│  API KEY (salvate solo su questo PC)      │
+├─────────────────────────────────────────┤
+│  OpenAI      [ sk-•••••••• ] [Test]     │
+│  Gemini      [ ••••••••••• ] [Test]     │
+│  Claude      [ sk-ant-••• ] [Test]     │
+│  DeepSeek    [ ••••••••••• ] [Test]     │
+│  Kimi        [ ••••••••••• ] [Test]     │
+│                                         │
+│  Modello OpenAI (opz.): [ gpt-4o-mini ] │
+│  … (avanzato, collassabile)             │
+│                                         │
+│  [ Salva ]                              │
+│  Le chiavi non vengono inviate al repo. │
+└─────────────────────────────────────────┘
+```
+
+### 8.3 Area upload — messaggi contestuali
+
+Sopra il form «Carica file», **banner dinamico** in base a selezione:
+
+| Selezione | Banner |
+|-----------|--------|
+| Riassunto OFF | (nessun banner) |
+| Locale, OK | «⏱ Il riassunto locale può richiedere **5–20 minuti** extra su CPU.» |
+| Locale, RAM insufficiente | «⚠ Riassunto locale non disponibile. Scegli un motore cloud o aggiungi RAM.» |
+| Cloud, key OK | «☁ Riassunto via **OpenAI** — richiede connessione internet. Tempo stimato: 1–3 min.» |
+| Cloud, key mancante | «⚠ Inserisci la API key per OpenAI in Impostazioni.» |
+
+Dopo accodamento, flash message include provider:
+
+> «3 file accodati · riassunto: **Claude** (dettagliato)»
+
+### 8.4 Pannello coda — riga job
+
+Ogni job in coda mostra (già parzialmente presente):
+
+```
+campione-italiano-lungo.wav — in coda
+riassunto: Claude · lunghezza: normale
+```
+
+### 8.5 Dettaglio job completato — tab Riassunto
+
+| Caso | UI |
+|------|-----|
+| Successo | Testo riassunto + metadato: «Generato con **OpenAI gpt-4o-mini** · 412 parole · single-pass» |
+| Errore API | «Riassunto non generato: API key non valida / rate limit / …» |
+| Locale OOM | «Memoria insufficiente per LLM locale. Prova un motore cloud.» |
+| Disattivato | «Riassunto non richiesto per questo lavoro.» |
+
+### 8.6 Regole UX obbligatorie
+
+1. **Un solo select «Motore»** — niente doppia scelta «modalità + IT5»
+2. **Disabilitare** opzioni non disponibili (grey + tooltip), non solo errore post-hoc
+3. **Mai** mostrare API key in chiaro dopo salvataggio (solo `••••`)
+4. **Opt-in** esplicito: checkbox «Genera riassunto» default **OFF** finché utente non configura un motore valido (o default sensato: OFF)
+5. **Trascrizione sempre** indipendente dal riassunto (pipeline già separata)
+6. Testi in **italiano**, no jargon («provider» → «Motore» o «Servizio riassunto»)
+
+### 8.7 Wireframe flusso utente
+
+```mermaid
+flowchart TD
+    A[Sidebar: attiva Riassunto] --> B{Scegli motore}
+    B -->|Locale| C{RAM >= 16GB e modello?}
+    C -->|No| D[Mostra errore + suggerisci cloud]
+    C -->|Sì| E[Banner tempo lungo]
+    B -->|Cloud| F{API key presente?}
+    F -->|No| G[Link impostazioni API]
+    F -->|Sì| H[Banner tempo breve + costo]
+    E --> I[Accoda file]
+    H --> I
+    I --> J[Trascrizione NeMo]
+    J --> K{Riassunto richiesto?}
+    K -->|No| L[Fine]
+    K -->|Sì| M[Provider.summarize]
+    M --> L
+```
+
+### 8.8 Modifiche HTTP / form (implementazione futura)
+
+| Endpoint / campo | Modifica |
+|------------------|----------|
+| `POST /enqueue` | + `summary_provider`, `summary_enabled`, `summary_length` |
+| `GET /` | contesto: provider disponibili, stato RAM, key configurate (bool, non valori) |
+| `POST /settings/summary-keys` | salva API keys (nuovo) |
+| `POST /settings/test-provider/{id}` | test connessione (nuovo) |
+| `GET /api/summary/capabilities` | JSON per UI dinamica (opzionale) |
+
+---
+
+## 9. Pipeline worker (sequenza)
+
+```
+1. claim job
+2. run_pipeline: trascrizione
+3. unload ASR
+4. SE summary_requested:
+     a. carica provider da job.summary_provider
+     b. verifica is_available() — altrimenti summary_error e status completed comunque
+     c. token count + strategia
+     d. summarize con progress (chunk i/N per map-reduce)
+     e. scrivi riassunto.txt + aggiorna job.json
+5. mark completed
+```
+
+**Cloud:** worker fa HTTP outbound; timeout generoso (es. 120s per chunk).  
+**Locale:** stesso worker subprocess; nessuna porta extra.
+
+---
+
+## 10. Benchmark esteso (prima del codice prodotto)
+
+### 10.1 Matrice benchmark
+
+Per ogni `trascrizione.txt` nei campioni:
+
+| Provider | Run obbligatorio? |
+|----------|-------------------|
+| local (Qwen 3B) | ✅ Sì |
+| openai (gpt-4o-mini) | ✅ Sì |
+| claude (haiku) | ✅ Consigliato |
+| gemini (flash) | ✅ Consigliato |
+| deepseek | Opzionale |
+| kimi | Opzionale |
+
+Output: `docs/summary-benchmark/runs/<timestamp>-<provider>/`
+
+### 10.2 Metriche per run
+
+- Token input (tokenizer provider)
+- Token output
+- Tempo wall-clock
+- Strategia (single / map-reduce)
+- Costo stimato (solo cloud)
+- **Giudizio umano** su checklist qualità
+
+### 10.3 Comando target
 
 ```cmd
-python scripts/summary_benchmark.py
+python scripts/summary_benchmark.py --provider openai
+python scripts/summary_benchmark.py --provider local
+python scripts/summary_benchmark.py --all-providers
 ```
 
-- Legge `trascrizione.txt` da `data/output/jobs/*/`
-- **Non** usa UI, **non** usa ASR
-- 8 combinazioni per file: `extractive|abstractive` × `auto|short|normal|detailed`
-- Output: `docs/summary-benchmark/runs/<timestamp>/`
+---
 
-### 4.2 Run di riferimento
+## 11. Cosa rimuovere / non rifare
 
-**Cartella:** `docs/summary-benchmark/runs/20260628_130950/`
-
-| Sorgente | Parole src | Peggio estrattivo | Peggio IT5 |
-|----------|------------|-------------------|------------|
-| campione-italiano-breve | 19 | N/A (testo già minimo) | N/A |
-| campione-italiano-lungo | 641 | short: 57 parole, 2 frasi | detailed: 94 parole, senso distorto |
-| campione-italiano-medio | 292 | frammenti incoerenti | 49 parole, incompleto |
-| campione-italiano-molto-lungo | 1336 | collage 11 frasi senza filo | 179 parole, allucinazioni |
-
-### 4.3 Criteri di un «vero riassunto»
-
-1. Dice **chi / cosa / contesto**
-2. Estrae **punti principali** in ordine logico
-3. È **più corto** dell’originale ma **autosufficiente**
-4. **Non inventa** e **non ribalta** il significato
-5. Chi legge solo il riassunto **capisce** il contenuto
-
-**Esito:** nessuna delle 8 combinazioni attuali soddisfa questi criteri sui campioni lunghi.
-
-### 4.4 Esempio di riferimento qualità (manuale, non generato)
-
-Per `campione-italiano-lungo` (Erika / Wikimedia), un riassunto accettabile dovrebbe includere almeno:
-
-- Identità e percorso dal 2004
-- Ruolo in Wikimedia Foundation dal 2013 (community relations)
-- Attività su copyright, TRS, GLAM, Wikimedia Italia
-- Messaggio sulle «5 caratteristiche» uniche di Wikipedia
-- Visione Wikimedia centrata sulle **persone**, non sui contenuti
-- Critica all’elitismo basato sul numero di edit / «VIP»
-- Chiusura su demografia reale di internet e ottimismo sul movimento
-
-L’IT5 detailed attuale **inverte** il senso sulla parte VIP/elitisti → **inaccettabile in produzione**.
+| ❌ | Motivo |
+|----|--------|
+| IT5 news come riassunto | Qualità inaccettabile su parlato |
+| LexRank come «Riassunto» | Non è riassunto |
+| Un solo motore forzato | Esclude utenti senza RAM o senza offline |
+| API key in git / job.json | Sicurezza |
+| Implementare tutti e 6 provider in un colpo | Fase 1: **local + OpenAI**; poi gli altri |
+| Patch UI senza provider abstraction | Debito tecnico immediato |
 
 ---
 
-## 5. Decisione strategica: LLM locale
+## 12. Piano implementazione a fasi
 
-### 5.1 Perché LLM locale
+### Fase 0 — Documentazione ✅
 
-| Motivo | Dettaglio |
-|--------|-----------|
-| Qualità | Unico modo realistico per riassunti **astratti** e coerenti su parlato trascritto |
-| Privacy | Dati restano in locale (allineato al prodotto) |
-| Esperienza utente | Utente già convinto: «a occhi chiusi» per questo use case |
-| Qwen | Buona reputazione multilingue/italiano; già usato con successo in altri progetti |
+- Questo file + BUG-SUM-020
 
-### 5.2 Trade-off accettati
+### Fase 1 — Benchmark
 
-| Aspetto | Realtà |
-|---------|--------|
-| **Tempo** | Riassunto molto più lento della trascrizione (es. ~5 min ASR + **10–20 min** riassunto su CPU) |
-| **RAM** | Serve memoria per modello + **KV cache** del contesto |
-| **CPU** | Nessuna GPU per ora → token/sec bassi |
-| **Hardware eterogeneo** | Non tutti i PC possono avere la feature |
+- [ ] Token count sui 4 campioni
+- [ ] Benchmark `local` (Qwen 3B)
+- [ ] Benchmark `openai` + `claude` o `gemini` (almeno 2 cloud)
+- [ ] Utente approva qualità minima
 
-### 5.3 Cosa NON rifare
+### Fase 2 — Backend core
 
-- ❌ Alzare solo `max_length` su IT5
-- ❌ Aggiungere altro modello news senza benchmark
-- ❌ Chiamare «riassunto» l’estrattivo LexRank
-- ❌ Patchare solo la UI
-- ❌ Implementare codice prima del benchmark LLM approvato
+- [ ] `SummaryProvider` + `local` + **un** cloud (OpenAI)
+- [ ] `summary_config` + secrets file
+- [ ] Job fields `summary_provider`
+- [ ] Pipeline worker integrata
+- [ ] Rimuovere IT5/LexRank da path «riassunto»
 
----
+### Fase 3 — UI
 
-## 6. Vincoli hardware e prodotto
+- [ ] Sidebar motore + lunghezza + checkbox
+- [ ] Pagina impostazioni API
+- [ ] Banner dinamici + stati disabilitati
+- [ ] Dettaglio job con metadato provider
 
-### 6.1 Regole proposte (da confermare)
+### Fase 4 — Provider aggiuntivi
 
-| Condizione | Comportamento prodotto |
-|------------|------------------------|
-| RAM sistema **< 16 GB** | Riassunto LLM **non offerto** (solo trascrizione TXT/SRT) |
-| RAM sistema **≥ 16 GB** | Riassunto **disponibile** ma **opt-in** esplicito |
-| RAM libera insufficiente al momento del riassunto (dopo unload ASR) | Non avviare; messaggio chiaro |
-| CPU only | Accettato; mostrare stima tempi |
-| GPU | Fuori scope fase 1; valutazione successiva |
+- [ ] Gemini, Claude, DeepSeek, Kimi (stesso pattern OpenAI-compatible dove possibile)
 
-### 6.2 Perché 16 GB come soglia
+### Fase 5 — Docker / docs
 
-- NeMo Parakeet in trascrizione: ~3–6 GB RAM
-- Strategia: **sequenza** trascrizione → unload ASR → caricamento LLM
-- Su 16 GB: spazio per Qwen 3B quantizzato + contesto moderato (`n_ctx` 8K)
-- Su 8 GB: trascrizione già critica; LLM serio **non realistico**
-
-### 6.3 Opt-in utente
-
-L’utente con hardware sufficiente **decide** se generare il riassunto, con messaggio tipo:
-
-> «Il riassunto può richiedere molti minuti in più della sola sbobinatura (soprattutto su CPU).»
-
-La coda job già esiste: il riassunto può essere fase separata con progresso dedicato.
+- [ ] Env vars per cloud in compose
+- [ ] Modello GGUF opzionale in immagine CPU
+- [ ] Documentazione utente «come ottenere API key»
 
 ---
 
-## 7. Token in input — analisi scientifica (critica)
-
-> **Punto sollevato dall’utente:** se il modello non «mangia» tutto il testo rilevante in input (o lo gestisce male a chunk), il riassunto resta scarso **anche con il miglior LLM**.
-
-### 7.1 Perché i token contano
-
-| Componente | Ruolo |
-|------------|--------|
-| **Token input** | Trascrizione codificata dal tokenizer del modello |
-| **Contesto (`n_ctx`)** | Massimo token che il modello può vedere in un passaggio |
-| **Token output** | Spazio per il riassunto generato |
-| **KV cache** | Memoria extra che cresce con `n_ctx` — critica su CPU/RAM |
-
-Se `token_input + token_output + overhead > n_ctx` → testo troncato o strategia map-reduce obbligatoria.
-
-### 7.2 Stima token sui campioni attuali (italiano)
-
-Regola rapida: **~1,3–1,6 token/parola**, **~4 caratteri/token**.
-
-| Campione | Parole ~ | Token input ~ | Entra in 8K? | Entra in 32K? |
-|----------|----------|---------------|--------------|---------------|
-| breve | 19 | ~30 | ✅ | ✅ |
-| medio | 292 | ~400–450 | ✅ | ✅ |
-| lungo (Erika) | 641 | ~900–1 000 | ✅ | ✅ |
-| molto-lungo | 1 336 | ~1 800–2 100 | ✅ | ✅ |
-
-**I campioni attuali entrano in un singolo passaggio anche con `n_ctx=8192`.**
-
-### 7.3 Stima per audio lunghi (produzione reale)
-
-| Durata parlato | Parole trascritte ~ | Token input ~ |
-|----------------|---------------------|---------------|
-| 30 min | 3 000–4 500 | 4 000–7 000 |
-| 1 h | 6 000–9 000 | 8 000–14 000 |
-| 2 h | 12 000–18 000 | 16 000–28 000 |
-
-Per questi casi:
-
-- `n_ctx=8192` → **map-reduce obbligatorio**
-- `n_ctx=32768` → singolo passaggio possibile ma **KV cache enorme** su 16 GB
-
-### 7.4 KV cache e RAM (ordine di grandezza, da misurare su hardware reale)
-
-| Setup | RAM modello ~ | KV cache extra ~ |
-|-------|---------------|------------------|
-| Qwen 3B Q4, `n_ctx=4096` | 2–2,5 GB | +0,5–1 GB |
-| Qwen 3B Q4, `n_ctx=8192` | 2–2,5 GB | +1–2 GB |
-| Qwen 3B Q4, `n_ctx=32768` | 2–2,5 GB | +4–8 GB |
-| Qwen 7B Q4, `n_ctx=8192` | 4,5–5 GB | +2–4 GB |
-| Qwen 7B Q4, `n_ctx=32768` | 4,5–5 GB | +8–16 GB |
-
-**⚠️ Errore da evitare:** impostare `n_ctx=32768` «perché Qwen lo supporta» su PC 16 GB → OOM, swap, tempi peggiori.
-
-### 7.5 Strategie per testi lunghi
-
-#### A) Single-pass
-
-- Tutta la trascrizione in un prompt
-- Possibile solo se `token_input + margin < n_ctx` e RAM sufficiente
-
-#### B) Map-reduce
-
-```
-Trascrizione → chunk (es. 3K token, overlap 200 token)
-            → riassunto per chunk
-            → testo combinato
-            → riassunto finale (eventuale secondo passaggio)
-```
-
-- **Pro:** `n_ctx` basso per passaggio, funziona su 16 GB
-- **Contro:** moltiplicatore sui tempi; rischio perdita coerenza se taglio chunk mal fatto
-- **Requisito:** taglio per frase/paragrafo/SRT, da validare nel benchmark
-
-#### C) Soglie operative proposte
-
-| Token trascrizione | Strategia |
-|--------------------|-----------|
-| ≤ 6 000 | Single-pass |
-| 6 000 – 24 000 | Map-reduce |
-| > 24 000 | Map-reduce + avviso tempi / possibile limite su hardware debole |
-
----
-
-## 8. Modelli LLM proposti (CPU, italiano)
-
-### 8.1 Preferenza: famiglia Qwen 2.5
-
-Motivazione utente + tecnica: buon italiano, usato con successo altrove, adatto a summarization con prompt.
-
-### 8.2 Tier consigliati
-
-| Tier | Modello | Quant. | RAM modello | Target hardware | Note |
-|------|---------|--------|-------------|-----------------|------|
-| **Default** | **Qwen2.5-3B-Instruct** | Q4_K_M | ~2–2,5 GB | 16 GB+, CPU | Miglior compromesso qualità/tempo/RAM |
-| Alternativa | Llama 3.2 3B Instruct | Q4_K_M | ~2–2,5 GB | 16 GB+, CPU | Simile, italiano leggermente inferiore |
-| Qualità lenta | Qwen2.5-7B-Instruct | Q4_K_M | ~4,5–5 GB | 32 GB ideale, 16 GB stretto | Migliore ma **molto** più lento su CPU |
-| Solo anteprima | Qwen2.5-1.5B-Instruct | Q4 | ~1 GB | — | Veloce ma rischio qualità insufficiente |
-
-### 8.3 Runtime proposto (fase implementazione futura)
-
-| Opzione | Uso |
-|---------|-----|
-| **llama.cpp** + GGUF | Produzione, CPU-first, embeddabile nel worker |
-| `llama-cpp-python` | Binding Python per integrazione Sbobinator |
-| Ollama | Comodo in dev; meno controllo in produzione |
-
-Modello scaricato una volta in `models/` (come ASR e vecchio IT5).
-
-### 8.4 Profili prodotto (`n_ctx` per RAM)
-
-| Profilo | RAM min | Modello | `n_ctx` | Uso |
-|---------|---------|---------|---------|-----|
-| **Standard** | 16 GB | Qwen 3B Q4 | **8192** | Trascrizioni fino ~5–6K token |
-| **Lungo** | 32 GB | Qwen 3B o 7B Q4 | **16384** | File più lunghi |
-| **Qualità** | 32 GB | Qwen 7B Q4 | **8192** | Riassunto migliore, tempi alti |
-
-### 8.5 Tempi attesi (CPU, indicativi)
-
-| Modello | Testo ~600–1300 parole | Note |
-|---------|------------------------|------|
-| Qwen 3B Q4 | ~3–8 min | Default realistico |
-| Qwen 7B Q4 | ~10–25 min | Coerente con osservazione utente 5+15 min |
-| Map-reduce | moltiplicatore × N chunk | Da misurare |
-
----
-
-## 9. Architettura logica futura (non implementata)
-
-```
-[Trascrizione NeMo] → unload ASR
-                   → rilevamento RAM
-                   → se < 16 GB: skip riassunto
-                   → conteggio token trascrizione
-                   → scelta strategia (single-pass / map-reduce)
-                   → scelta profilo modello (3B default)
-                   → prompt fisso (trascritto parlato, IT, no invenzioni)
-                   → generazione riassunto
-                   → salvataggio riassunto.txt
-```
-
-### 9.1 Prompt (linee guida, da definire nel benchmark)
-
-- Input: trascritto da parlato (non articolo)
-- Output: riassunto in italiano, prosa, punti principali in ordine logico
-- Vincoli: non inventare; non omettere chi parla e di cosa tratta; lunghezza proporzionata
-
-### 9.2 Integrazione coda
-
-- `summary_requested` + `summary_mode` già in job record
-- Nuovo valore mode: es. `llm` (da definire) al posto di `abstractive`/`extractive` o in aggiunta
-- Progress message dedicato: «Riassunto LLM (3/5 chunk)…»
-
----
-
-## 10. Processo di valutazione prima del codice
-
-### Fase 1 — Metriche (scientifico)
-
-Per ogni `trascrizione.txt` del benchmark:
-
-1. Conteggio token con **tokenizer Qwen** (non stima a occhio)
-2. Tabella: parole, caratteri, token, % di `n_ctx` per profilo 8K/16K
-3. Stima RAM per profilo (modello + KV cache)
-4. Salvare in `docs/summary-benchmark/` (nuova run o appendice)
-
-### Fase 2 — Benchmark LLM
-
-1. Scaricare GGUF Qwen2.5-3B-Instruct (e opzionale 7B)
-2. Stesso input del benchmark attuale
-3. Prompt unificato per summarization parlato
-4. Output in `docs/summary-benchmark/runs/<timestamp>-llm/`
-5. Valutazione **umana** (utente) + checklist criteri §4.3
-
-### Fase 3 — Decisione go/no-go
-
-| Esito | Azione |
-|-------|--------|
-| Qwen 3B passa criteri su campioni lunghi | Implementare motore LLM + gate hardware |
-| Solo 7B passa | Offrire 7B solo su 32 GB o con avviso tempi estremi |
-| Nessun modello locale passa su CPU 16 GB | Rivalutare GPU, API cloud, o **rimuovere feature** |
-
-### Fase 4 — Implementazione (solo dopo OK utente)
-
-- Sostituire `summarize.py` motore astrattivo/estrattivo come «riassunto prodotto»
-- Script download modello GGUF
-- Rilevamento RAM
-- UI: opt-in, stima tempi, disabilitazione sotto soglia
-- Docker: modello in immagine o download al build
-- Aggiornare `FIX-RIASSUNTO-LLM.md` e chiudere `BUG-SUM-020`
-
----
-
-## 11. Cosa tenere / cosa rimuovere (decisione futura)
-
-| Componente attuale | Destino proposto |
-|--------------------|------------------|
-| IT5 news | **Rimuovere** come motore riassunto |
-| LexRank estrattivo | **Non** chiamarlo «riassunto»; opzionale come «estratti» o rimuovere |
-| `summary_benchmark.py` | **Tenere ed estendere** per LLM |
-| UI «Riassunto (IT5)» | Sostituire con «Riassunto (LLM)» o disabilitare fino a pronto |
-
----
-
-## 12. Rischi residui
+## 13. Rischi
 
 | Rischio | Mitigazione |
 |---------|-------------|
-| Tempi inaccettabili su CPU | Opt-in, stima tempi, profilo 3B default |
-| RAM insufficiente con contesto alto | `n_ctx` conservativo, map-reduce, gate 16 GB |
-| Qualità map-reduce bassa | Taglio intelligente chunk, benchmark prima |
-| Modello GGUF grande da distribuire | Download script separato (~2 GB 3B) |
-| Conflitto RAM ASR + LLM | Unload obbligatorio tra fasi (già parzialmente presente) |
+| Locale troppo lento | Opt-in; cloud alternativa |
+| Costo cloud a sorpresa | Messaggio «a consumo API»; modello economico default |
+| API key rubata da disco | File secrets permessi utente; mai loggare |
+| Provider down / rate limit | `summary_error` chiaro; trascrizione comunque salvata |
+| Kimi/DeepSeek scarsi in IT | Benchmark; nascondere se falliscono criteri |
+| Completità UI | Un select «Motore»; avanzato collassato |
 
 ---
 
-## 13. Prossimi step (checklist)
+## 14. Note verbali utente
 
-- [ ] **Fase 1:** Tabella token reali (tokenizer Qwen) sui 4 campioni + proiezione 30 min / 1 h / 2 h
-- [ ] **Fase 1:** Tabella RAM stimata per profili `n_ctx` 8K / 16K / 32K
-- [ ] **Fase 2:** Download GGUF Qwen2.5-3B-Instruct in ambiente test
-- [ ] **Fase 2:** Script benchmark LLM (estensione `summary_benchmark.py` o nuovo script)
-- [ ] **Fase 2:** Run benchmark + salvataggio in `docs/summary-benchmark/`
-- [ ] **Fase 3:** Revisione utente output vs criteri §4.3
-- [ ] **Fase 3:** Decisione modello default (3B vs 7B) e soglia RAM definitiva
-- [ ] **Fase 4:** Implementazione (solo se go)
-- [ ] Aggiornare `TRACCIAMENTO-BUG.md` con link a questo file e stato BUG-SUM-020
+> «Se offriamo riassunto deve essere fatto bene.»
+
+> «LLM locale a occhi chiusi — ma ci mette 15 minuti e serve ragionare sull’hardware.»
+
+> «Da 16 GB in su locale; sotto no.»
+
+> «L’utente sceglie se farlo — perde tanto tempo rispetto alla sbobinatura.»
+
+> «Token in input — va valutato in modo scientifico.»
+
+> **(28/06)** «Dobbiamo poter far scegliere chi genera il riassunto: LLM locale, OpenAI, Gemini, Claude, DeepSeek, Kimi — così abbiamo più margine di manovra sugli utenti.»
 
 ---
 
-## 14. Riferimenti file
+## 15. Riferimenti
 
 | Path | Contenuto |
 |------|-----------|
-| `bug-fix/TRACCIAMENTO-BUG.md` | BUG-SUM-019, BUG-SUM-020 |
+| `bug-fix/TRACCIAMENTO-BUG.md` | BUG-SUM-020 |
 | `bug-fix/FIX-RIASSUNTO-LLM.md` | Questo documento |
-| `docs/summary-benchmark/README.md` | Istruzioni benchmark attuale |
-| `docs/summary-benchmark/runs/20260628_130950/` | Run IT5/LexRank di riferimento |
-| `scripts/summary_benchmark.py` | Script benchmark offline |
-| `src/sbobinator/summarize.py` | Motore attuale (da sostituire) |
-| `models/it5-small-news-summarization/` | Modello attuale (da deprecare) |
+| `src/sbobinator/ui/server.py` | UI attuale (da estendere) |
+| `src/sbobinator/ui/templates/index.html` | Sidebar + upload |
+| `docs/summary-benchmark/` | Benchmark qualità |
+| `scripts/summary_benchmark.py` | Script offline |
 
 ---
 
-## 15. Note verbali utente (da preservare)
-
-> «Se offriamo un servizio che è riassunto deve essere un riassunto fatto bene.»
-
-> «5 righe su 600 parole che non spiegano niente — piuttosto rimuovo i riassunti.»
-
-> «La soluzione migliore è LLM locale, a occhi chiusi.»
-
-> «Ci mette poco a fare il testo, ci mette 15 minuti a fare il riassunto — va ragionato per hardware diversi.»
-
-> «Solo CPU, non GPU per ora. Da 16 GB in su possiamo abilitare; sotto no.»
-
-> «L’utente sceglie se farlo perché perde tanto tempo rispetto alla sbobinatura.»
-
-> «Se mi mangia i token in input il riassunto funziona di merda lo stesso — va valutato in modo molto scientifico.»
-
-> «Qwen secondo me fa faville su questo progetto.»
-
----
-
-*Ultimo aggiornamento: 2026-06-28 — documento di pianificazione, implementazione non avviata.*
+*Ultimo aggiornamento: 2026-06-28 — multi-provider + design UI; implementazione non avviata.*

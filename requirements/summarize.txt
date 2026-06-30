@@ -1,0 +1,3 @@
+# Solo moduli riassunto LLM (senza UI né ASR)
+# Uso: pip install -r requirements/summarize.txt
+-e .[summarize]

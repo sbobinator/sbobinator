@@ -50,9 +50,10 @@ Metodi path: `txt_path()`, `srt_path()`, `summary_path()`, `source_copy_path()`.
 
 | Funzione | Descrizione |
 |----------|-------------|
-| `summarize(text, mode, length)` | Riassunto |
-| `summarize_extractive(text, n)` | Solo estrattivo |
-| `unload_abstractive_model()` | Libera mT5 |
+| `summarize(text, provider, length)` | Riassunto LLM |
+| `unload_summary_models()` | Libera LLM locale |
+
+Provider in `sbobinator.summarize_providers.*`.
 
 ---
 

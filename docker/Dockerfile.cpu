@@ -1,5 +1,6 @@
 # Sbobinator — profilo CPU (mini PC AMD, sviluppo senza GPU NVIDIA)
-# Build: immagine completa con modelli ASR + IT5 riassunto in /models (~3 GB).
+# Build: immagine con modello ASR Parakeet in /models (~2.5 GB).
+# Riassunto LLM: API cloud (key in env o data/.secrets/); Qwen locale opzionale a runtime.
 FROM python:3.12-slim-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,19 +18,18 @@ ENV SBOBINATOR_DATA=/data
 
 COPY pyproject.toml README.md ./
 COPY src/ src/
-COPY scripts/download_model.py scripts/download_summary_model.py scripts/
+COPY scripts/download_model.py scripts/download_summary_llm.py scripts/
 
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu \
     && pip install --no-cache-dir "nemo_toolkit[asr]" \
     && pip install --no-cache-dir -e ".[ui,summarize]" \
-    && mkdir -p /models /data/input /data/output/jobs \
-    && python scripts/download_model.py \
-    && python scripts/download_summary_model.py
+    && mkdir -p /models /data/input /data/output/jobs /data/.secrets \
+    && python scripts/download_model.py
 
 EXPOSE 8501
 
-# Solo dati utente (input/output) — i modelli restano nell'immagine
+# Solo dati utente (input/output, API key in .secrets) — modelli ASR nell'immagine
 VOLUME ["/data"]
 
 ENTRYPOINT ["sbobina"]

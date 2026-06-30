@@ -1,60 +1,48 @@
 # Configurazione
 
-Modulo: `src/sbobinator/config.py`
+Modulo: `src/sbobinator/config.py`  
+API key riassunto: `src/sbobinator/summary_config.py`
 
-## Costanti
+## Costanti ASR
 
 | Nome | Valore | Descrizione |
 |------|--------|-------------|
 | `DEFAULT_MODEL` | `nvidia/parakeet-tdt-0.6b-v3` | Modello ASR |
 | `SAMPLE_RATE` | 16000 | Hz per NeMo |
 | `CHUNK_THRESHOLD_SEC` | 1800 (30 min) | Soglia chunking |
-| `CHUNK_LENGTH_SEC` | 30 | Durata chunk |
-| `CHUNK_OVERLAP_SEC` | 2 | Overlap chunk |
 
-## Estensioni file
+## LLM locale (Qwen)
 
-`VIDEO_EXTENSIONS`, `AUDIO_EXTENSIONS` — set usati da `extract.py`.
+| Nome | Valore |
+|------|--------|
+| `LOCAL_LLM_FOLDER` | `qwen2.5-3b-instruct` |
+| `LOCAL_LLM_GGUF_FILE` | `qwen2.5-3b-instruct-q4_k_m.gguf` |
+| `MIN_RAM_GB` | 16 |
+
+Funzioni: `local_gguf_path()`, `local_llm_available()`, `system_ram_gb()`.
 
 ## Enum
 
-### `SummaryMode`
-
-- `extractive`
-- `abstractive`
-
 ### `SummaryLength`
 
-- `auto`, `short`, `normal`, `detailed`
+`auto`, `short`, `normal`, `detailed`
 
-## `TranscribeConfig`
+### `SummaryMode` (legacy DB)
 
-```python
-@dataclass
-class TranscribeConfig:
-    model_name: str = DEFAULT_MODEL
-    device: str | None = None  # None = auto
-    chunk_threshold_sec: float = 1800
-    chunk_length_sec: float = 30
-    chunk_overlap_sec: float = 2
-```
-
-`resolve_device()` → `cuda` se disponibile, altrimenti `cpu`.
+`extractive`, `abstractive` — deprecato, non usato dal riassunto LLM.
 
 ## Funzioni path
 
 | Funzione | Descrizione |
 |----------|-------------|
-| `project_root()` | Root repo (parent di `src/`) |
 | `data_dir()` | `SBOBINATOR_DATA` o `./data` |
-| `input_dir()` | `data/input` |
-| `output_dir()` | `data/output` |
 | `models_dir()` | `NEMO_CACHE_DIR` o `./models` |
-| `summary_model_dir()` | `models/mt5-small` |
-| `local_model_path()` | Path `.nemo` se presente |
-| `local_summary_model_path()` | Path mT5 se completo |
-| `local_summary_model_available()` | bool |
+| `local_model_path()` | Path `.nemo` Parakeet |
+
+## Dipendenze Python
+
+Fonte di verità: `pyproject.toml` → vedi [`requirements/README.md`](../../requirements/README.md).
 
 ## Variabili ambiente
 
-Vedi [Deployment → Environment](../deployment/environment.md).
+Vedi [Environment](../deployment/environment.md) e `.env.example`.

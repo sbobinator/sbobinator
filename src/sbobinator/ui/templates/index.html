@@ -26,21 +26,24 @@
         </label>
         <hr>
         <h3>Riassunto</h3>
+        <a href="/settings/summary" class="btn btn-secondary settings-cta">Motori e API key →</a>
         <label class="checkbox">
-          <input type="checkbox" name="summary_enabled" form="enqueue-form" value="true" checked>
+          <input type="checkbox" name="summary_enabled" form="enqueue-form" value="true">
           Genera riassunto
         </label>
-        <label>Modalità
-          <select name="summary_mode" form="enqueue-form">
-            <option value="extractive">Sintesi (estrativo)</option>
-            {% if abstractive_ok %}
-            <option value="abstractive">Riassunto (IT5)</option>
-            {% endif %}
+        <label>Motore
+          <select name="summary_provider" form="enqueue-form" id="summary-provider-select">
+            {% for p in summary_providers %}
+            <option value="{{ p.id }}"
+                    {% if p.id == default_summary_provider %}selected{% endif %}
+                    data-available="{{ 'true' if p.available else 'false' }}"
+                    data-reason="{{ p.reason }}">
+              {{ p.label }}{% if p.available %} ✓{% endif %}
+            </option>
+            {% endfor %}
           </select>
         </label>
-        {% if not abstractive_ok %}
-        <p class="hint">IT5: esegui <code>python scripts/download_summary_model.py</code></p>
-        {% endif %}
+        <p class="hint" id="provider-hint"></p>
         <label>Lunghezza
           <select name="summary_length" form="enqueue-form">
             <option value="auto">Automatica</option>
@@ -67,18 +70,25 @@
       {% endif %}
       <footer class="sidebar-footer">
         <p>Sbobinator v{{ version }}</p>
-        <p class="hint">ffmpeg nel PATH</p>
+        <p class="hint"><a href="/settings/summary" class="nav-inline">Riassunto LLM</a></p>
       </footer>
     </aside>
 
     <main class="main">
       <header class="hero">
         <h1>Sbobinator</h1>
-        <p>Trascrizione in italiano · Coda job · File sempre salvati su disco</p>
+        <p>Trascrizione in italiano · Coda job · Riassunto LLM opt-in</p>
       </header>
 
       {% if flash %}
       <div class="flash flash-{{ flash_type }}">{{ flash }}</div>
+      {% endif %}
+
+      {% if configured_providers_count == 0 %}
+      <div class="flash flash-warning">
+        Nessun motore riassunto configurato.
+        <a href="/settings/summary">Apri impostazioni riassunto</a> per inserire la API key (es. DeepSeek) o preparare il modello locale.
+      </div>
       {% endif %}
 
       <section class="stats">
@@ -100,7 +110,7 @@
 
       <section class="panel">
         <h2>Carica file</h2>
-        <p class="hint">Più file vengono accodati e elaborati uno alla volta. Le impostazioni della sidebar valgono per questo accodamento.</p>
+        <p class="hint">Le impostazioni della sidebar valgono per questo accodamento.</p>
         <form id="enqueue-form" action="/enqueue" method="post" enctype="multipart/form-data" class="upload-form">
           <input type="file" name="files" multiple accept=".mp4,.mkv,.avi,.mov,.webm,.wav,.mp3,.flac,.m4a,.ogg" required>
           <button type="submit" class="btn btn-primary">Accoda sbobinatura</button>
@@ -112,5 +122,21 @@
       {% endif %}
     </main>
   </div>
+  <script>
+    const sel = document.getElementById('summary-provider-select');
+    const hint = document.getElementById('provider-hint');
+    function updateProviderHint() {
+      if (!sel || !hint) return;
+      const opt = sel.options[sel.selectedIndex];
+      if (!opt) return;
+      if (opt.dataset.available === 'false') {
+        const reason = opt.dataset.reason || 'da configurare';
+        hint.innerHTML = '⚠ ' + reason + ' — <a href="/settings/summary?highlight=' + opt.value + '">Configura ora</a>';
+      } else {
+        hint.textContent = '';
+      }
+    }
+    if (sel) { sel.addEventListener('change', updateProviderHint); updateProviderHint(); }
+  </script>
 </body>
 </html>

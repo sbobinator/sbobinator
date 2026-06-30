@@ -11,7 +11,7 @@ sbobina ui [--port INTEGER]
 
 | Opzione | Default | Descrizione |
 |---------|---------|-------------|
-| `--port`, `-p` | 8501 | Porta Streamlit |
+| `--port`, `-p` | 8501 | Porta uvicorn |
 
 ---
 
@@ -40,7 +40,7 @@ sbobina transcribe INPUT [OPTIONS]
 | `--device` | `-d` | auto | cpu / cuda |
 | `--format` | `-f` | txt,srt | Formati (legacy) |
 | `--summarize` | `-s` | false | Riassunto |
-| `--summary-mode` | | extractive | extractive / abstractive |
+| `--summary-provider` | | deepseek | local, openai, gemini, claude, deepseek, kimi |
 | `--summary-length` | | auto | Lunghezza riassunto |
 | `--legacy-output` | | false | Output flat senza job |
 | `--verbose` | `-v` | false | Log debug |

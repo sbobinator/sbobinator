@@ -14,7 +14,7 @@
       <div class="progress-bar"><div class="progress-fill" style="width: {{ job.progress_pct }}%"></div></div>
       <span class="hint">{{ job.progress_message or job.status }}</span>
       <span class="hint"><code>{{ job.path.name }}</code>
-        {% if job.summary_requested %}· riassunto: {% if job.summary_mode == 'abstractive' %}IT5{% else %}sintesi{% endif %}{% else %}· senza riassunto{% endif %}
+        {% if job.summary_requested %}· riassunto: {% if job.summary_provider %}{{ provider_label(job.summary_provider) }}{% else %}LLM{% endif %}{% else %}· senza riassunto{% endif %}
       </span>
     </div>
     <div class="queue-actions">

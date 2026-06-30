@@ -1,6 +1,6 @@
 # Script di utilità
 
-Tutti in `scripts/` — **Python puro**, nessun PowerShell.
+Tutti in `scripts/` — **Python puro**.
 
 ## `install_local.py`
 
@@ -12,7 +12,7 @@ python scripts\install_local.py
 
 - Crea `.venv`
 - PyTorch CPU
-- `pip install -e ".[local]"`
+- `pip install -r requirements/local.txt` → extra `[local]` da `pyproject.toml`
 
 ---
 
@@ -24,25 +24,29 @@ Scarica Parakeet ASR (~2.5 GB) in `models/` via curl.
 python scripts\download_model.py
 ```
 
-Rispetta `NEMO_CACHE_DIR`. Supporta ripresa download (`curl -C -`).
+---
+
+## `download_summary_llm.py`
+
+Scarica Qwen2.5 GGUF per riassunto **locale** (~2 GB).
+
+```cmd
+python scripts\download_summary_llm.py
+```
+
+Richiede `huggingface_hub` (in `[local]` / `[summarize]`).
 
 ---
 
-## `download_summary_model.py`
+## `download_summary_model.py` (deprecato)
 
-Scarica `google/mt5-small` in `models/mt5-small/`.
-
-```cmd
-python scripts\download_summary_model.py
-```
-
-Elenca file da API HuggingFace, scarica con curl. Su Windows usa `curl.exe`.
+IT5 news — **non più usato**. Usa `download_summary_llm.py` o API cloud.
 
 ---
 
 ## `clean_output.py`
 
-Svuota `data/output/jobs/` (cartelle + `queue.db`). Mantiene `.gitkeep`.
+Svuota `data/output/jobs/` (cartelle + `queue.db`).
 
 ```cmd
 python scripts\clean_output.py
@@ -52,13 +56,24 @@ python scripts\clean_output.py
 
 ## `restart_ui.py`
 
-Termina Streamlit/worker Sbobinator sulla porta 8501 e riavvia UI.
+Termina UI/worker sulla porta 8501 e riavvia FastAPI.
 
 ```cmd
 python scripts\restart_ui.py
 ```
 
-Usato da `start.bat`. Evita istanze duplicate.
+Usato da `start.bat`.
+
+---
+
+## `summary_benchmark.py`
+
+Benchmark riassunto LLM su trascrizioni esistenti.
+
+```cmd
+python scripts\summary_benchmark.py --provider deepseek
+python scripts\summary_benchmark.py --provider local --only campione-italiano-lungo
+```
 
 ---
 
@@ -66,33 +81,17 @@ Usato da `start.bat`. Evita istanze duplicate.
 
 Monitor performance job in tempo reale.
 
-```cmd
-python scripts\benchmark_monitor.py
-python scripts\benchmark_monitor.py --watch
-python scripts\benchmark_monitor.py --poll 5
-```
-
-Metriche: durata audio, tempo elaborazione, RTF, velocità, caratteri.
-
-Salva report in `data/output/benchmark_YYYYMMDD_HHMMSS.json` e `.md`.
-
 ---
 
 ## `generate_samples.py`
 
-Genera campioni audio italiani da Wikimedia (test).
-
-```cmd
-python scripts\generate_samples.py
-```
-
-Output in `data/input/`.
+Campioni audio italiani da Wikimedia (test).
 
 ---
 
 ## `start.bat`
 
-Wrapper Windows → `restart_ui.py` con venv o Python313.
+Wrapper Windows → `restart_ui.py`.
 
 ---
 
@@ -102,7 +101,7 @@ Wrapper Windows → `restart_ui.py` con venv o Python313.
 |--------|---------------|
 | `install_local.py` | Prima installazione |
 | `download_model.py` | Prima trascrizione |
-| `download_summary_model.py` | Prima di usare mT5 |
+| `download_summary_llm.py` | Riassunto locale Qwen |
 | `clean_output.py` | Reset storico job |
 | `restart_ui.py` | UI bloccata / porta occupata |
-| `benchmark_monitor.py` | Test performance |
+| `summary_benchmark.py` | Valutare qualità riassunto LLM |

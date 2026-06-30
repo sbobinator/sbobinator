@@ -1,98 +1,88 @@
 # Avvio rapido
 
-## 1. Scarica i modelli (una tantum)
+## 1. Installa dipendenze
+
+```cmd
+python scripts\install_local.py
+```
+
+oppure `pip install -r requirements/local.txt`
+
+## 2. Scarica modello ASR (obbligatorio)
 
 ```cmd
 python scripts\download_model.py
-python scripts\download_summary_model.py
 ```
 
 | Script | Dimensione | Obbligatorio |
 |--------|------------|--------------|
 | `download_model.py` | ~2.5 GB | Sì (trascrizione) |
-| `download_summary_model.py` | ~1.1 GB | Solo per riassunto mT5 |
+| `download_summary_llm.py` | ~2 GB | Solo riassunto **locale** Qwen |
 
-Il riassunto **estrativo** funziona senza il secondo script.
+Riassunto **cloud** (DeepSeek, ecc.): nessun download modello — solo API key in `/settings/summary`.
 
 ---
 
-## 2. Avvia l'interfaccia
+## 3. Avvia l'interfaccia
 
-**Windows — doppio click:**
-
-```
+```cmd
 start.bat
 ```
 
-**Oppure da terminale:**
-
-```cmd
-sbobina ui
-```
-
-**Oppure riavvio pulito (chiude istanze Streamlit duplicate):**
-
-```cmd
-python scripts\restart_ui.py
-```
+oppure `sbobina ui` / `python scripts\restart_ui.py`
 
 Apri: **http://localhost:8501**
 
 ---
 
-## 3. Sbobina un file
+## 4. Sbobina un file
 
-1. Sidebar → imposta **Riassunto** (estrativo o mT5 se scaricato)
-2. Trascina un file audio/video
-3. Clicca **▶️ Accoda sbobinatura**
-4. Segui la **Coda elaborazione**
-5. Risultati in `data\output\jobs\YYYYMMDD_HHMMSS_nomefile\`
+1. (Opzionale) **Impostazioni riassunto** → API key DeepSeek o altro
+2. Sidebar → **Genera riassunto** + motore
+3. Carica file → **Accoda sbobinatura**
+4. Risultati in `data\output\jobs\YYYYMMDD_HHMMSS_nomefile\`
 
 ---
 
-## 4. CLI — un file senza UI
+## 5. CLI
 
 ```cmd
-sbobina transcribe data\input\miofile.wav -s
+sbobina transcribe data\input\miofile.wav -s --summary-provider deepseek
 ```
-
-Accoda nel registro job ed elabora subito.
 
 ---
 
-## 5. Svuota lo storico e ricomincia
+## 6. Svuota storico
 
 ```cmd
 python scripts\clean_output.py
 ```
 
-Rimuove tutte le cartelle job e resetta `queue.db`. Non tocca `data\input\` né `models\`.
-
 ---
 
-## Struttura cartelle dopo il primo utilizzo
+## Struttura dopo il primo utilizzo
 
 ```
 sbobinator/
 ├── data/
-│   ├── input/          ← metti qui i file sorgente
-│   └── output/
-│       └── jobs/       ← risultati e queue.db
+│   ├── .secrets/       ← API key riassunto
+│   ├── input/
+│   └── output/jobs/
 ├── models/
 │   ├── parakeet-tdt-0.6b-v3.nemo
-│   └── mt5-small/      ← opzionale
-└── .venv/              ← ambiente Python
+│   └── qwen2.5-3b-instruct/   ← opzionale
+└── .venv/
 ```
 
 ---
 
-## Problemi comuni al primo avvio
+## Problemi comuni
 
 | Sintomo | Soluzione |
 |---------|-----------|
-| `ffmpeg non trovato` | Installa ffmpeg, riavvia terminale |
-| `Dipendenze ASR mancanti` | `pip install -e ".[local]"` |
-| Bottone accoda disabilitato | Ricarica pagina dopo upload file |
-| Riassunto mT5 non disponibile | `python scripts\download_summary_model.py` |
+| `ffmpeg non trovato` | `winget install Gyan.FFmpeg` |
+| Dipendenze mancanti | `pip install -r requirements/local.txt` |
+| DeepSeek `Connection error` | `pip install truststore` + riavvia UI |
+| Riassunto locale disabilitato | RAM < 16 GB o manca GGUF |
 
 Vedi [Risoluzione problemi](../troubleshooting/common-issues.md).

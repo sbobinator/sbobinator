@@ -2,9 +2,9 @@
 
 Trascrizione **audio e video → testo** in italiano, in locale, con modelli pre-addestrati [NVIDIA NeMo Parakeet](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3).
 
-Include **interfaccia web** e **riassunto testo** (sintesi estrattiva o IT5 fine-tuned).
+Include **interfaccia web FastAPI** e **riassunto LLM** (DeepSeek, OpenAI, Claude, Gemini, Kimi, o Qwen locale).
 
-📖 **Documentazione completa:** [docs su GitHub Pages](https://sbobinator.github.io/sbobinator/) — sorgenti in `docs/`, build con `mkdocs serve`.
+📖 **Documentazione:** [docs su GitHub Pages](https://sbobinator.github.io/sbobinator/) — build locale: `mkdocs serve`.
 
 ## Avvio rapido (Windows, senza Docker)
 
@@ -14,11 +14,13 @@ Include **interfaccia web** e **riassunto testo** (sintesi estrattiva o IT5 fine
 winget install Gyan.FFmpeg
 ```
 
-### 2. Installa Sbobinator
+### 2. Installa Sbobinator (tutte le dipendenze)
 
 ```cmd
 python scripts\install_local.py
 ```
+
+Equivalente manuale: `pip install -r requirements/local.txt`
 
 ### 3. Scarica il modello ASR (una volta, ~2.5 GB)
 
@@ -28,53 +30,56 @@ python scripts\download_model.py
 
 ### 4. Avvia l'interfaccia web
 
-Doppio click su **`start.bat`** oppure:
-
 ```cmd
 start.bat
 ```
 
-oppure:
+oppure `sbobina ui` → **http://localhost:8501**
 
-```cmd
-sbobina ui
-```
+### 5. Riassunto (opzionale)
 
-Si apre il browser su **http://localhost:8501** — trascina un file, clicca **Sbobina**, scarica TXT/SRT/riassunto.
-
-> Primo avvio: `python scripts/download_model.py` (~2.5 GB ASR). Per riassunto IT5: `python scripts/download_summary_model.py` (~400 MB).
+| Motore | Setup |
+|--------|--------|
+| **Cloud** (DeepSeek, OpenAI, …) | [Impostazioni riassunto](http://localhost:8501/settings/summary) → API key |
+| **Locale** (Qwen, offline) | `python scripts/download_summary_llm.py` + RAM ≥ 16 GB |
 
 ## Interfaccia web
 
 | Funzione | Descrizione |
 |----------|-------------|
-| Upload drag & drop | Audio e video (MP4, MKV, WAV, MP3…) |
-| Trascrizione | NeMo Parakeet v3, italiano auto |
-| Riassunto veloce | Estrattivo, offline, nessun modello extra |
-| Riassunto | IT5-small news in `models/it5-small-news-summarization/` (~400 MB) |
+| Upload | Audio e video (MP4, MKV, WAV, MP3…) |
+| Trascrizione | NeMo Parakeet v3, italiano |
+| Riassunto LLM | Opt-in, motore a scelta |
 | Download | TXT, SRT, riassunto |
 
 ## Comandi CLI
 
 ```powershell
-sbobina                              # avvia UI web
-sbobina ui                           # idem
+sbobina ui
 sbobina transcribe video.mp4 -o data/output
-sbobina transcribe audio.wav -s      # con riassunto
-sbobina transcribe audio.wav -s --summary-mode abstractive
+sbobina transcribe audio.wav -s --summary-provider deepseek
 sbobina info
 ```
+
+## Dipendenze (`pyproject.toml`)
+
+| Extra | Uso |
+|-------|-----|
+| `local` | **Completo** — ASR + UI + riassunto LLM |
+| `ui` | Web + API cloud riassunto |
+| `summarize` | Solo moduli LLM |
+| `asr` | Solo NeMo |
+
+Vedi [`requirements/README.md`](requirements/README.md).
 
 ## Requisiti
 
 - Python 3.12+
 - **ffmpeg** nel PATH
-- RAM: 8 GB minimo, 16–32 GB consigliati
-- GPU NVIDIA opzionale (più veloce)
+- RAM: 8 GB minimo (16 GB per riassunto locale Qwen)
+- GPU NVIDIA opzionale (trascrizione più veloce)
 
-## Docker (alternativa)
-
-Per il mini PC AMD o deploy containerizzato:
+## Docker
 
 ```bash
 cd docker
@@ -82,28 +87,27 @@ docker compose --profile cpu build
 docker compose --profile cpu up
 ```
 
-Modelli inclusi nell'immagine. Solo `data/` montato dal host. Vedi [docs/deployment/docker.md](docs/deployment/docker.md).
+Solo modello ASR nell'immagine; riassunto via API key (`SBOBINATOR_DEEPSEEK_API_KEY` o UI). Vedi [docs/deployment/docker.md](docs/deployment/docker.md).
 
 ## Modello
 
-| Impostazione | Valore |
-|--------------|--------|
+| Componente | Valore |
+|------------|--------|
 | ASR | `nvidia/parakeet-tdt-0.6b-v3` |
-| Riassunto | LexRank (sintesi) o `gsarti/it5-small-news-summarization` |
-| Lingua | Italiano (auto-rilevamento) |
+| Riassunto | LLM multi-provider (vedi impostazioni) |
 
 ## Struttura
 
 ```
 sbobinator/
-├── start.bat              # avvio rapido Windows
+├── requirements/          # alias pip → pyproject.toml
+├── start.bat
 ├── scripts/install_local.py
 ├── scripts/download_model.py
-├── scripts/generate_samples.py
-├── src/sbobinator/ui/     # interfaccia Streamlit
-├── data/input/            # file da trascrivere
-├── data/output/           # risultati
-└── models/                # cache modelli
+├── scripts/download_summary_llm.py
+├── src/sbobinator/ui/     # FastAPI + HTMX
+├── data/.secrets/         # API key riassunto (gitignored)
+└── models/                # ASR .nemo + Qwen GGUF opzionale
 ```
 
 ## Licenza

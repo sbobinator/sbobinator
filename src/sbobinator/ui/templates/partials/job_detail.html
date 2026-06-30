@@ -3,7 +3,12 @@
     {% if selected_job.status == status_failed %}❌ Fallito{% elif selected_job.status in active_statuses %}⏳ In corso{% else %}✅ Risultati{% endif %}
     — {{ selected_job.source_name }}
   </h2>
-  <p class="hint">ID: <code>{{ selected_job.id }}</code> · Stato: <strong>{{ selected_job.status }}</strong></p>
+  <p class="hint">ID: <code>{{ selected_job.id }}</code> · Stato: <strong>{{ selected_job.status }}</strong>
+    {% if selected_job.summary_requested and selected_job.summary_provider %}
+    · Riassunto: {{ provider_label(selected_job.summary_provider) }}
+    {% if selected_job.summary_strategy %} ({{ selected_job.summary_strategy }}){% endif %}
+    {% endif %}
+  </p>
 
   <div class="files-box">
     <h4>File salvati su disco</h4>

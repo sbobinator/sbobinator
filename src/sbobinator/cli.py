@@ -10,7 +10,7 @@ from rich.logging import RichHandler
 from rich.table import Table
 
 from sbobinator import __version__
-from sbobinator.config import DEFAULT_MODEL, SummaryLength, SummaryMode, TranscribeConfig
+from sbobinator.config import DEFAULT_MODEL, SummaryLength, TranscribeConfig
 from sbobinator.export import export_all, export_summary_text
 from sbobinator.jobs import (
     STATUS_COMPLETED,
@@ -114,10 +114,10 @@ def transcribe(
         "-s",
         help="Genera anche un riassunto del testo",
     ),
-    summary_mode: SummaryMode = typer.Option(
-        SummaryMode.extractive,
-        "--summary-mode",
-        help="extractive=sintesi veloce, abstractive=riassunto IT5",
+    summary_provider: str = typer.Option(
+        "openai",
+        "--summary-provider",
+        help="Provider riassunto: local, openai, gemini, claude, deepseek, kimi",
     ),
     summary_length: SummaryLength = typer.Option(
         SummaryLength.auto,
@@ -147,7 +147,11 @@ def transcribe(
             if summarize_result:
                 unload_model()
                 with console.status("[bold green]Riassunto in corso..."):
-                    summary = summarize(result.text, mode=summary_mode, length=summary_length)
+                    summary = summarize(
+                        result.text,
+                        provider=summary_provider,
+                        length=summary_length,
+                    )
                 path = export_summary_text(
                     summary.text, output_dir / f"{input_path.stem}_riassunto.txt"
                 )
@@ -170,7 +174,7 @@ def transcribe(
         summary_requested=summarize_result,
         model_name=model,
         device=device,
-        summary_mode=summary_mode.value,
+        summary_provider=summary_provider if summarize_result else "",
         summary_length=summary_length.value,
     )
     console.print(f"[bold]Job ID:[/bold]  {job.id}")

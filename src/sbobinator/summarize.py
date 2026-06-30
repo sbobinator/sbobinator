@@ -1,243 +1,158 @@
-"""Riassunto testo: estrattivo (veloce) o astrattivo (IT5 fine-tuned, italiano)."""
-
-from __future__ import annotations
-
-import logging
-import re
-from dataclasses import dataclass
-
-from sbobinator.config import (
-    SUMMARY_MODEL_FOLDER,
-    SummaryLength,
-    SummaryMode,
-    local_summary_model_path,
-)
-
-logger = logging.getLogger(__name__)
-
-_abstractive_pipeline = None
-
-# Chunk caratteri per testi lunghi (IT5 max ~512 token)
-_ABSTRACTIVE_CHUNK_CHARS = 3000
-
-
-@dataclass
-class SummaryResult:
-    text: str
-    mode: SummaryMode
-    source_chars: int
-    source_sentences: int = 0
-    summary_sentences: int = 0
-
-
-def _split_sentences(text: str) -> list[str]:
-    parts = re.split(r"(?<=[.!?…])\s+", text.strip())
-    return [p.strip() for p in parts if p.strip()]
-
-
-def estimate_summary_sentences(
-    text: str,
-    length: SummaryLength = SummaryLength.auto,
-) -> int:
-    """Calcola quante frasi includere in base alla lunghezza del testo."""
-    sentences = _split_sentences(text)
-    total = len(sentences)
-    if total == 0:
-        return 0
-    if total <= 4:
-        return total
-
-    base = max(3, min(30, round(total * 0.12)))
-
-    if length == SummaryLength.short:
-        target = max(2, round(base * 0.6))
-    elif length == SummaryLength.detailed:
-        target = min(total, round(base * 1.6))
-    elif length == SummaryLength.normal:
-        target = base
-    else:  # auto
-        if total <= 15:
-            target = max(2, total // 3)
-        elif total <= 40:
-            target = max(3, total // 5)
-        else:
-            target = base
-
-    return max(2, min(total, target))
-
-
-def estimate_abstractive_lengths(text: str, length: SummaryLength = SummaryLength.auto) -> tuple[int, int]:
-    """max_length e min_length per IT5 in base al testo sorgente."""
-    words = len(text.split())
-    if length == SummaryLength.short:
-        return (80, 25)
-    if length == SummaryLength.detailed:
-        return (min(400, max(180, words // 3)), 60)
-    if length == SummaryLength.normal:
-        return (min(250, max(120, words // 5)), 40)
-    if words < 150:
-        return (100, 30)
-    if words < 600:
-        return (180, 40)
-    return (min(350, words // 4), 50)
-
-
-def _word_set(sentence: str) -> set[str]:
-    return set(re.findall(r"\w+", sentence.lower()))
-
-
-def summarize_extractive(text: str, num_sentences: int = 5) -> str:
-    """LexRank semplificato: nessun modello extra, funziona offline."""
-    sentences = _split_sentences(text)
-    if len(sentences) <= num_sentences:
-        return text.strip()
-
-    num_sentences = max(1, min(num_sentences, len(sentences)))
-    vectors = [_word_set(s) for s in sentences]
-    scores = [0.0] * len(sentences)
-
-    for i, vi in enumerate(vectors):
-        if not vi:
-            continue
-        for j, vj in enumerate(vectors):
-            if i == j or not vj:
-                continue
-            overlap = len(vi & vj) / (len(vi | vj) ** 0.5 + 1e-9)
-            scores[i] += overlap
-
-    ranked = sorted(range(len(sentences)), key=lambda i: scores[i], reverse=True)
-    top = sorted(ranked[:num_sentences])
-    return " ".join(sentences[i] for i in top)
-
-
-def _clean_abstractive_output(text: str) -> str:
-    """Rimuove token sentinella T5 se compaiono per errore."""
-    text = re.sub(r"<extra_id_\d+>", "", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
-
-
-def _get_abstractive_pipeline():
-    global _abstractive_pipeline
-    if _abstractive_pipeline is not None:
-        return _abstractive_pipeline
-
-    try:
-        from transformers import pipeline
-    except ImportError as exc:
-        raise ImportError(
-            "Riassunto astrattivo richiede transformers. Installa con:\n"
-            "  pip install -e '.[local]'"
-        ) from exc
-
-    local = local_summary_model_path()
-    if not local:
-        raise RuntimeError(
-            f"Modello riassunto IT5 non trovato in models/{SUMMARY_MODEL_FOLDER}/.\n"
-            "Scaricalo con:\n"
-            "  python scripts/download_summary_model.py\n"
-            "Poi riprova (nessun download durante l'elaborazione)."
-        )
-
-    logger.info("Caricamento modello riassunto IT5 locale %s ...", local)
-    _abstractive_pipeline = pipeline(
-        "summarization",
-        model=str(local),
-        tokenizer=str(local),
-    )
-    return _abstractive_pipeline
-
-
-def _summarize_chunk_abstractive(chunk: str, max_length: int, min_length: int) -> str:
-    pipe = _get_abstractive_pipeline()
-    # IT5 fine-tuned: testo diretto, senza prefisso "summarize:" (solo per modelli base)
-    out = pipe(
-        chunk,
-        max_length=max_length,
-        min_length=min_length,
-        do_sample=False,
-        truncation=True,
-    )
-    return _clean_abstractive_output(out[0]["summary_text"])
-
-
-def summarize_abstractive(
-    text: str,
-    max_length: int = 180,
-    min_length: int = 40,
-) -> str:
-    """Riassunto generativo italiano (IT5 fine-tuned su news summarization)."""
-    text = text.strip()
-    if not text:
-        return ""
-
-    if len(text) <= _ABSTRACTIVE_CHUNK_CHARS:
-        return _summarize_chunk_abstractive(text, max_length, min_length)
-
-    chunks: list[str] = []
-    start = 0
-    while start < len(text):
-        end = min(start + _ABSTRACTIVE_CHUNK_CHARS, len(text))
-        if end < len(text):
-            cut = text.rfind(" ", start, end)
-            if cut > start:
-                end = cut
-        chunks.append(text[start:end].strip())
-        start = end
-
-    partials = [
-        _summarize_chunk_abstractive(c, max_length // 2 + 40, min_length // 2 + 10)
-        for c in chunks
-        if c
-    ]
-    combined = " ".join(partials)
-    if len(combined) > _ABSTRACTIVE_CHUNK_CHARS:
-        return _summarize_chunk_abstractive(combined, max_length, min_length)
-    return combined
-
-
-def unload_abstractive_model() -> None:
-    global _abstractive_pipeline
-    _abstractive_pipeline = None
-    try:
-        import gc
-
-        import torch
-
-        gc.collect()
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-    except ImportError:
-        pass
-
-
-def summarize(
-    text: str,
-    mode: SummaryMode = SummaryMode.extractive,
-    num_sentences: int | None = None,
-    length: SummaryLength = SummaryLength.auto,
-    max_length: int | None = None,
-) -> SummaryResult:
-    source_sentences = len(_split_sentences(text))
-
-    if mode == SummaryMode.extractive:
-        target = num_sentences if num_sentences is not None else estimate_summary_sentences(text, length)
-        summary = summarize_extractive(text, num_sentences=target)
-        used = len(_split_sentences(summary))
-    else:
-        auto_max, auto_min = estimate_abstractive_lengths(text, length)
-        summary = summarize_abstractive(
-            text,
-            max_length=max_length or auto_max,
-            min_length=auto_min,
-        )
-        used = len(_split_sentences(summary))
-
-    return SummaryResult(
-        text=summary,
-        mode=mode,
-        source_chars=len(text),
-        source_sentences=source_sentences,
-        summary_sentences=used,
-    )
-
+"""Orchestratore riassunto LLM multi-provider con map-reduce per testi lunghi."""
+
+from __future__ import annotations
+
+import logging
+
+from sbobinator.config import SummaryLength
+from sbobinator.summarize_providers.base import ProgressCallback, SummaryResult, count_sentences
+from sbobinator.summarize_providers.local_qwen import unload_local_llm
+from sbobinator.summarize_providers.prompt import SYSTEM_PROMPT, merge_prompt, user_prompt
+from sbobinator.summarize_providers.registry import get_provider, provider_label
+
+logger = logging.getLogger(__name__)
+
+
+def _split_chunks(text: str, max_chars: int) -> list[str]:
+    text = text.strip()
+    if not text:
+        return []
+    if len(text) <= max_chars:
+        return [text]
+
+    chunks: list[str] = []
+    start = 0
+    while start < len(text):
+        end = min(start + max_chars, len(text))
+        if end < len(text):
+            for sep in ("\n\n", "\n", ". ", "? ", "! "):
+                cut = text.rfind(sep, start, end)
+                if cut > start + max_chars // 4:
+                    end = cut + len(sep)
+                    break
+        piece = text[start:end].strip()
+        if piece:
+            chunks.append(piece)
+        start = end
+    return chunks
+
+
+def _resolve_provider_id(provider_id: str | None) -> str:
+    if provider_id:
+        return provider_id.strip().lower()
+    from sbobinator.summarize_providers.registry import first_available_provider
+
+    fallback = first_available_provider()
+    if not fallback:
+        raise RuntimeError(
+            "Nessun provider riassunto disponibile. "
+            "Configura un provider cloud in Impostazioni o scarica il modello locale."
+        )
+    return fallback
+
+
+def summarize(
+    text: str,
+    *,
+    provider: str | None = None,
+    length: SummaryLength = SummaryLength.auto,
+    model: str | None = None,
+    on_progress: ProgressCallback | None = None,
+) -> SummaryResult:
+    """Genera un riassunto LLM del testo trascritto."""
+    text = text.strip()
+    if not text:
+        return SummaryResult(
+            text="",
+            provider=provider or "",
+            model=model or "",
+            source_chars=0,
+            strategy="single",
+        )
+
+    provider_id = _resolve_provider_id(provider)
+    impl = get_provider(provider_id)
+    available, reason = impl.is_available()
+    if not available:
+        raise RuntimeError(reason)
+
+    tokens = impl.estimate_tokens(text)
+    threshold = impl.single_pass_token_limit()
+    used_model = model or impl.default_model()
+
+    if tokens <= threshold:
+        if on_progress:
+            on_progress(
+                "summarize",
+                92.0,
+                f"Riassunto ({provider_label(provider_id)})...",
+            )
+        result = impl.summarize(
+            text,
+            length=length,
+            model=used_model,
+            on_progress=on_progress,
+        )
+        result.strategy = "single"
+        result.input_tokens = tokens
+        return result
+
+    # Map-reduce per testi che superano il contesto del provider
+    chunk_limit = impl.chunk_char_limit()
+    chunks = _split_chunks(text, chunk_limit)
+    if on_progress:
+        on_progress(
+            "summarize",
+            90.0,
+            f"Riassunto map-reduce: {len(chunks)} segmenti ({provider_label(provider_id)})...",
+        )
+
+    partials: list[str] = []
+    for i, chunk in enumerate(chunks):
+        if on_progress:
+            pct = 90.0 + (7.0 * (i + 1) / max(len(chunks), 1))
+            on_progress(
+                "summarize",
+                pct,
+                f"Segmento riassunto {i + 1}/{len(chunks)}...",
+            )
+        part = impl.complete(
+            SYSTEM_PROMPT,
+            user_prompt(chunk, SummaryLength.normal),
+            model=used_model,
+            on_progress=on_progress,
+        )
+        partials.append(part.strip())
+
+    merged_input = merge_prompt("\n\n".join(partials), length)
+    if on_progress:
+        on_progress("summarize", 98.0, "Unione riassunti parziali...")
+
+    final_text = impl.complete(
+        SYSTEM_PROMPT,
+        merged_input,
+        model=used_model,
+        on_progress=on_progress,
+    )
+
+    return SummaryResult(
+        text=final_text.strip(),
+        provider=provider_id,
+        model=used_model,
+        source_chars=len(text),
+        input_tokens=tokens,
+        strategy="map_reduce",
+        summary_sentences=count_sentences(final_text),
+    )
+
+
+def unload_summary_models() -> None:
+    """Libera memoria dei modelli riassunto caricati."""
+    unload_local_llm()
+
+
+# --- Legacy (deprecato, non usare in produzione) ---
+
+
+def unload_abstractive_model() -> None:
+    unload_summary_models()

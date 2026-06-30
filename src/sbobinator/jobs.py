@@ -48,6 +48,10 @@ class JobRecord:
     device: str | None = None
     summary_mode: str = "extractive"
     summary_length: str = "auto"
+    summary_provider: str = ""
+    summary_model: str = ""
+    summary_strategy: str = ""
+    summary_input_tokens: int = 0
 
     @property
     def label(self) -> str:
@@ -157,12 +161,29 @@ def _init_schema(conn: sqlite3.Connection) -> None:
             model_name TEXT DEFAULT '',
             device TEXT,
             summary_mode TEXT DEFAULT 'extractive',
-            summary_length TEXT DEFAULT 'auto'
+            summary_length TEXT DEFAULT 'auto',
+            summary_provider TEXT DEFAULT '',
+            summary_model TEXT DEFAULT '',
+            summary_strategy TEXT DEFAULT '',
+            summary_input_tokens INTEGER DEFAULT 0
         )
         """
     )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_jobs_created ON jobs(created_at DESC)")
+    _migrate_schema(conn)
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(jobs)")}
+    for col, typedef in (
+        ("summary_provider", "TEXT DEFAULT ''"),
+        ("summary_model", "TEXT DEFAULT ''"),
+        ("summary_strategy", "TEXT DEFAULT ''"),
+        ("summary_input_tokens", "INTEGER DEFAULT 0"),
+    ):
+        if col not in cols:
+            conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {typedef}")
 
 
 def _row_to_job(row: sqlite3.Row) -> JobRecord:
@@ -171,7 +192,17 @@ def _row_to_job(row: sqlite3.Row) -> JobRecord:
     data["summary_requested"] = bool(data.get("summary_requested"))
     if not data.get("model_name"):
         data["model_name"] = DEFAULT_MODEL
-    return JobRecord(**data)
+    known = {f.name for f in fields(JobRecord)}
+    defaults = {
+        "summary_provider": "",
+        "summary_model": "",
+        "summary_strategy": "",
+        "summary_input_tokens": 0,
+    }
+    for key, default in defaults.items():
+        if key not in data or data[key] is None:
+            data[key] = default
+    return JobRecord(**{k: data[k] for k in known if k in data})
 
 
 def _sync_job_json(job: JobRecord) -> None:
@@ -309,6 +340,8 @@ def enqueue_job(
     device: str | None = None,
     summary_mode: str = "extractive",
     summary_length: str = "auto",
+    summary_provider: str = "",
+    summary_model: str = "",
 ) -> JobRecord:
     """Accoda un lavoro: copia il file sorgente nella cartella job."""
     ensure_db()
@@ -336,6 +369,8 @@ def enqueue_job(
         device=device,
         summary_mode=summary_mode,
         summary_length=summary_length,
+        summary_provider=summary_provider,
+        summary_model=summary_model,
     )
     with _connect() as conn:
         _upsert_job(conn, job)

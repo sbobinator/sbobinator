@@ -59,7 +59,7 @@ Confusione, sensazione che l'app non funzioni nonostante impostazioni corrette.
   - Toggle on + errore → warning con testo errore
   - Toggle on + file mancante → warning generico (trascrizione comunque salvata)
 
-**File:** `src/sbobinator/ui/app.py` → `_summary_tab_message()`
+**File:** `src/sbobinator/ui/server.py`, `templates/partials/job_detail.html` (ex `streamlit_app.deprecated.py` → `_summary_tab_message()`)
 
 ---
 
@@ -99,7 +99,7 @@ data/output/jobs/
 - Sidebar **"Storico lavori"** con selectbox per rivedere/scaricare qualsiasi lavoro
 - **Nessun overwrite** tra lavori diversi
 
-**File:** `src/sbobinator/jobs.py`, `src/sbobinator/ui/app.py`
+**File:** `src/sbobinator/jobs.py`, `src/sbobinator/ui/server.py`
 
 **Nota:** File legacy in `data/output/*.txt` (prima del fix) non compaiono nello storico; restano su disco ma vanno migrati manualmente se servono.
 
@@ -117,7 +117,7 @@ data/output/jobs/
 
 | Campo | Dettaglio |
 |-------|-----------|
-| **Stato** | 🔍 In analisi |
+| **Stato** | ✅ Risolto (v0.3.x — migrazione FastAPI + HTMX) |
 | **Severità** | Media |
 | **Segnalazione** | `campione-italiano-molto-lungo.wav` compariva **3 volte** in "Coda elaborazione", stesso ID cartella `20260628_114944_campione-italiano-molto-lungo`, mentre `medio` compariva una volta |
 
@@ -158,12 +158,27 @@ data/output/jobs/
 **Impatto:**  
 Contatore "In coda" fuorviante, rischio di clic "Annulla" confusi, sensazione che l'ultimo file venga accodato N volte.
 
-**Fix proposti (non applicati — worker in esecuzione):**
+**Fix applicato (migrazione UI Streamlit → FastAPI):**
 
-1. Spostare il refresh coda in un **fragment isolato** che ridisegna solo il pannello coda (senza `st.rerun(scope="app")` sull'intera app).
-2. Oppure usare `st.status` / `st.empty()` con aggiornamento localizzato.
-3. Deduplicare `active` in UI per `job.id` prima del render (mitigazione difensiva).
-4. Aggiungere test: N file in un batch → `COUNT(*)` in DB = N righe uniche.
+1. Coda in partial HTMX (`/partials/queue`, `hx-trigger="every 2s"`) — **nessun** `st.rerun(scope="app")` globale.
+2. Deduplica `active` per `job.id` in `server.py` (`_dedupe_jobs`).
+3. Un solo processo uvicorn per porta (`process_guard.py`, `restart_ui.py`).
+
+**File:** `src/sbobinator/ui/server.py`, `templates/partials/queue.html`
+
+**Causa originale:** bug di rendering Streamlit (vedi storico sotto), non accodamento SQLite.
+
+<details>
+<summary>Storico analisi Streamlit (pre-fix)</summary>
+
+**Cause probabili (ordinate per probabilità):**
+
+1. **`_poll_queue_refresh()` + `st.rerun(scope="app")` ogni 2s** (`streamlit_app.deprecated.py`)
+2. Più istanze Streamlit sulla stessa porta
+3. Doppio/triplo click "Accoda" con uploader non svuotato (BUG-UI-017)
+4. Race su `enqueue_job` — esclusa come causa principale dei tripli visivi
+
+</details>
 
 ---
 
@@ -171,59 +186,52 @@ Contatore "In coda" fuorviante, rischio di clic "Annulla" confusi, sensazione ch
 
 | Campo | Dettaglio |
 |-------|-----------|
-| **Stato** | 🔍 In analisi |
+| **Stato** | ✅ Risolto (v0.3.x — migrazione FastAPI) |
 | **Severità** | Media |
 | **Segnalazione** | Dopo "Accoda sbobinatura", i file caricati **rimangono visibili** nell'uploader mentre la coda elabora → confusione ("devo ricliccare?" / accodamenti multipli) |
 
 **Comportamento atteso:**  
 Dopo accodamento riuscito, l'area upload si svuota (come documentato in BUG-UX-008 per il completamento).
 
-**Comportamento attuale (parziale):**  
-Il codice **tenta** di svuotare incrementando `uploader_nonce` e chiamando `st.rerun()`:
+**Fix applicato:**
 
-```python
-# app.py ~438-457
-st.session_state["uploader_nonce"] += 1
-...
-st.rerun()
-```
+- Form HTML `POST /enqueue` con `enctype=multipart/form-data`
+- Dopo accodamento: **redirect 303** a `/?job=...&flash=...` — nuova pagina, campo file **vuoto**
+- Nessun poll globale che interferisce col submit (HTMX solo sul blocco coda)
+- `is_source_in_active_queue()` usato in `server.py` per saltare duplicati
 
-Chiave widget: `key=f"uploader_{st.session_state['uploader_nonce']}"`.
+**File:** `src/sbobinator/ui/server.py`, `templates/index.html`
 
-**Cause probabili:**
+**Storico:** su Streamlit il reset via `uploader_nonce` + `st.rerun()` falliva per race con `_poll_queue_refresh()` (vedi `streamlit_app.deprecated.py`).
 
-1. **Race con `_poll_queue_refresh`**: ogni 2s un `st.rerun(scope="app")` può intervenire **nella stessa finestra** del click "Accoda", prima o dopo l'incremento `uploader_nonce`, lasciando il widget col vecchio `key` e i file ancora in memoria del browser.
+**Come verificare:**
 
-2. **Streamlit `file_uploader`**: il reset via cambio `key` non è immediato su tutti i browser; con `accept_multiple_files=True` il buffer può persistere fino al rerun "pulito".
+1. Carica N file, clicca "Accoda sbobinatura" una volta
+2. Pagina ricarica con messaggio flash; campo file **vuoto**
+3. Riclicca senza riselezionare file → nessun nuovo job
 
-3. **Click ripetuti mentre i file sono ancora visibili**: l'utente clicca di nuovo "Accoda" credendo che il primo non sia andato a buon fine → alimenta BUG-QUEUE-016 (anche se il DB salta i duplicati con `load_active_queue()`).
+---
 
-4. **Manca feedback persistente**: il messaggio `st.success` scompare al rerun del fragment; restano solo i file nell'uploader → sembra che nulla sia successo.
+### BUG-UI-019 — Pulsante «Annulla» in coda non risponde
 
-**Codice coinvolto:**
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | ✅ Risolto (v0.3.x — migrazione FastAPI) |
+| **Severità** | Alta |
+| **Segnalazione** | 28/06 — click su «Annulla» per job in coda senza effetto |
 
-| File | Rigione |
-|------|---------|
-| `src/sbobinator/ui/app.py` | `uploaded_files` / `uploader_nonce` / `submitted` (~397–461) |
-| `src/sbobinator/ui/app.py` | `_poll_queue_refresh()` — rerun globale ogni 2s |
-| `src/sbobinator/jobs.py` | `is_source_in_active_queue()` — esiste ma **non usato** in UI (duplicata logica inline) |
+**Causa root:**  
+`st.rerun(scope="app")` ogni 2s in `_poll_queue_refresh()` **mangiava i click** sui pulsanti Streamlit prima che `cancel_job()` venisse eseguito.
 
-**Nota:** la deduplica in UI (`any(j.source_name == source_name for j in load_active_queue())`) **funziona a livello DB** nella run verificata; il problema principale è **UX**, non perdita dati.
+**Fix applicato:**
 
-**Fix proposti (non applicati):**
+- `POST /api/jobs/{id}/cancel` via HTMX (`hx-post`, `hx-target="#queue-panel"`)
+- Poll coda isolato in partial (`/partials/queue`) — **nessun** rerun dell'intera pagina
+- Pulsante «Annulla tutti in coda» su stesso schema
 
-1. Dopo accodamento: `st.session_state.pop` esplicito + `uploader_nonce += 1` + **disabilitare** il bottone "Accoda" finché `uploaded_files` non è un set nuovo.
-2. Mostrare banner fisso "N file in coda" sopra l'uploader (non solo `st.success` effimero).
-3. Sostituire `st.rerun(scope="app")` del fragment con refresh solo del blocco coda.
-4. Usare `is_source_in_active_queue()` da `jobs.py` + dedup `uploaded_files` per `name` prima del loop.
-5. Opzionale: vincolo DB `UNIQUE(source_name)` per stati `queued|running` (enforcement server-side).
+**File:** `src/sbobinator/ui/server.py`, `templates/partials/queue.html`
 
-**Come riprodurre (test post-elaborazione):**
-
-1. Carica 4 wav, clicca Accoda una volta.
-2. **Senza ricaricare la pagina**, verifica se i 4 file sono ancora nell'uploader.
-3. Controlla `SELECT id, source_name, status FROM jobs` — confronta con righe nel pannello coda.
-4. Ripeti con un solo file (es. molto-lungo) e doppio click rapido su Accoda.
+**Nota:** resta valido che solo job `queued` sono annullabili; `running` mostra «non annullabile».
 
 ---
 
@@ -303,20 +311,20 @@ Output: `docs/summary-benchmark/runs/<timestamp>/` — confronto di tutte le com
 
 | Campo | Dettaglio |
 |-------|-----------|
-| **Stato** | 🔧 In corso — migrazione a **FastAPI + HTMX + Jinja2** |
+| **Stato** | ✅ Risolto (v0.3.x) — UI **FastAPI + HTMX + Jinja2** in produzione |
 | **Severità** | **Critica (architettura / UX)** |
 | **Segnalazione** | 28/06 — utente: *«se la UI crea così tanti problemi di usabilità la cambi»*; frustrazione esplicita con Streamlit |
 
 **Sintomi accumulati (tutti legati al modello Streamlit, non al backend jobs):**
 
-| ID | Problema | Causa Streamlit |
-|----|----------|-----------------|
-| BUG-QUEUE-016 | Stesso job mostrato più volte in coda | `st.rerun(scope="app")` + fragment che ridisegna l'intera pagina |
-| BUG-UI-017 | File restano nell'uploader dopo accoda | Reset widget via `key` + rerun globale inaffidabile |
-| BUG-UI-019 | Pulsante **Annulla** non risponde | Race tra poll ogni 2s e click utente |
-| BUG-ENV-018 | `ImportError data_dir` con codice aggiornato | Processi Streamlit stale, cache moduli, istanze multiple porta 8501 |
-| — | Impossibile cambiare riassunto su job già accodati | `session_state` + impostazioni sidebar non legate al job in modo esplicito |
-| — | Sensazione generale di UI «rotta» / non professionale | Paradigma rerun top-down, stato widget opaco, debug difficile |
+| ID | Problema | Stato post-migrazione |
+|----|----------|------------------------|
+| BUG-QUEUE-016 | Stesso job mostrato più volte in coda | ✅ Risolto |
+| BUG-UI-017 | File restano nell'uploader dopo accoda | ✅ Risolto |
+| BUG-UI-019 | Pulsante **Annulla** non risponde | ✅ Risolto |
+| BUG-ENV-018 | `ImportError data_dir` con processo stale | ✅ Risolto (causa Streamlit eliminata) |
+| BUG-UX-008 | `st.rerun()` e contesto upload | ✅ Risolto (redirect POST + storico sidebar) |
+| — | Impossibile cambiare riassunto su job già accodati | ℹ️ By design (impostazioni al momento accoda) |
 
 **Perché Streamlit non va bene qui:**
 
@@ -343,7 +351,7 @@ Output: `docs/summary-benchmark/runs/<timestamp>/` — confronto di tutte le com
 | `src/sbobinator/ui/launch.py` | Avvia uvicorn invece di streamlit; `SBOBINATOR_UI_HOST` per Docker |
 | `docker/Dockerfile.*` | `pip install -e ".[ui,summarize]"`, FastAPI |
 | `docker/docker-compose.yml` | `SBOBINATOR_UI_HOST=0.0.0.0`, healthcheck HTTP |
-| `src/sbobinator/ui/app.py` | **Deprecato** — rinominato, non più entry point |
+| `src/sbobinator/ui/streamlit_app.deprecated.py` | **Deprecato** — non più entry point |
 | `pyproject.toml` | `ui` extra: `fastapi`, `uvicorn`, `jinja2`, `python-multipart` al posto di `streamlit` |
 
 **Backend invariato:** `jobs.py`, `worker.py`, `pipeline.py`, SQLite — solo il layer presentazione cambia.
@@ -362,18 +370,19 @@ Output: `docs/summary-benchmark/runs/<timestamp>/` — confronto di tutte le com
 
 | Campo | Dettaglio |
 |-------|-----------|
-| **Stato** | 🔧 Parziale |
+| **Stato** | ✅ Risolto (v0.3.x — migrazione FastAPI) |
 | **Severità** | Alta |
 | **Segnalazione** | `cannot import name 'data_dir' from sbobinator.config` con path sorgente corretto |
 
 **Causa root:**  
 Processo Streamlit avviato **prima** di aggiornamenti codice / più istanze su porta 8501 → moduli Python in cache inconsistenti. Il sorgente contiene `data_dir`; l'import fallisce solo nel processo vecchio.
 
-**Fix (v0.3.0):**  
-`process_guard.py`, `restart_ui.py` migliorato, kill porta 8501, `verify_runtime()`, `.streamlit/config.toml` con `fastReruns = false`.
+**Fix applicato:**  
+- Migrazione a **uvicorn** (`sbobinator.ui.server:app`) — niente più `streamlit run`
+- `process_guard.py`, `restart_ui.py`: kill UI/worker, porta 8501, `verify_runtime()`
+- Entry point unico: `sbobina ui` → `launch.py`
 
-**Residuo:**  
-Serve sempre `python scripts/restart_ui.py` dopo `git pull`, non basta F5 browser.
+**Nota:** dopo `git pull` usare sempre `python scripts/restart_ui.py` (non basta F5 browser). `.streamlit/config.toml` non più usato dall'UI attiva.
 
 ---
 
@@ -433,11 +442,8 @@ Modello da 2.4 GB presente in `models/` ma app tentava ancora download HuggingFa
 **Causa:**  
 Dopo 1–2 minuti di elaborazione, Streamlit perde `session_state` o oggetti `TranscriptResult` non serializzabili; la sezione risultati non si renderizzava.
 
-**Fix iniziale:**  
-Salvataggio su disco + `st.rerun()` + testo in session_state.
-
-**Fix definitivo:**  
-Sistema lavori con lettura da file su disco (BUG-DATA-002).
+**Fix:**  
+Sistema lavori con lettura da file su disco (BUG-DATA-002) + UI FastAPI senza `session_state` per i risultati (`templates/partials/job_detail.html`).
 
 ---
 
@@ -455,7 +461,7 @@ Sistema lavori con lettura da file su disco (BUG-DATA-002).
 Cache modulo Streamlit + import da modulo sbagliato durante hot-reload.
 
 **Fix:**  
-`SummaryLength` e `SummaryMode` spostati in `config.py`.
+`SummaryLength` e `SummaryMode` spostati in `config.py`. UI Streamlit rimossa — hot-reload Streamlit non più rilevante per l'interfaccia.
 
 ---
 
@@ -500,12 +506,12 @@ Progress bar presente ma non distingue "caricamento modello" vs "trascrizione".
 
 ### BUG-UX-008 — `st.rerun()` fa perdere contesto upload
 
-| Stato | 🔍 In analisi (aggiornato 28/06) |
-|-------|----------------------------------|
+| Stato | ✅ Risolto (v0.3.x — migrazione FastAPI) |
+|-------|------------------------------------------|
 
-Dopo completamento, il file uploader si svuota. I risultati sono nello storico lavori, non nell'uploader.
+Su Streamlit, dopo accodamento/completamento, il file uploader non si resettava in modo affidabile.
 
-**Aggiornamento 28/06:** l'utente segnala che i file **restano** nell'uploader anche **dopo** l'accodamento (non solo dopo completamento). Vedi **BUG-UI-017** — il nonce + rerun non basta in presenza del fragment di poll.
+**Fix:** redirect HTTP 303 dopo `POST /enqueue` (form vuoto); risultati nello **storico lavori** (sidebar link), non nell'uploader. Vedi anche **BUG-UI-017** (risolto).
 
 ---
 
@@ -559,7 +565,7 @@ Modalità "Qualità (mT5)" può fallire con stesso errore SSL.
 | Stato | ✅ Risolto (v0.3.0) |
 |-------|----------------------|
 
-Coda SQLite + worker subprocess. Vedi `jobs.py`, `worker.py`. Nuovi bug coda in sezione 2 (BUG-QUEUE-016, BUG-UI-017).
+Coda SQLite + worker subprocess. Vedi `jobs.py`, `worker.py`. Bug coda UI Streamlit (BUG-QUEUE-016, BUG-UI-017, BUG-UI-019) **risolti** con migrazione FastAPI.
 
 ---
 
@@ -588,18 +594,26 @@ Trascrizioni pre-fix (flat in `data/output/`) non in `index.json`.
 
 | ID | Task |
 |----|------|
-| P0 | **BUG-ARCH-020** — Migrazione UI Streamlit → FastAPI (in corso) |
-| P1 | **BUG-UI-017** — Svuotare uploader dopo accoda (risolto con redirect POST) |
-| P1 | **BUG-QUEUE-016** — Refresh coda senza rerun globale (risolto con HTMX partial) |
+| P0 | **BUG-SUM-020** — Riassunto LLM locale (vedi [`FIX-RIASSUNTO-LLM.md`](FIX-RIASSUNTO-LLM.md)) |
 | P1 | Allineare CLI al registro `jobs/` |
 | P2 | Script migrazione output legacy |
 | P2 | Messaggio progress più dettagliato (fase + tempo) |
+
+### Risolti con migrazione UI (v0.3.x)
+
+| ID | Bug |
+|----|-----|
+| ✅ | BUG-ARCH-020 — Streamlit → FastAPI |
+| ✅ | BUG-QUEUE-016 — Duplicati pannello coda |
+| ✅ | BUG-UI-017 — Uploader non si svuota |
+| ✅ | BUG-UI-019 — Annulla non risponde |
+| ✅ | BUG-ENV-018 — ImportError processo stale |
+| ✅ | BUG-UX-008 — Rerun e contesto upload |
 
 ### Priorità media
 
 | ID | Task |
 |----|------|
-| P3 | Coda job — fix UX duplicati visivi (BUG-QUEUE-016) |
 | P3 | Pulsante "Elimina lavoro" nello storico |
 | P3 | Export ZIP di un lavoro (txt+srt+riassunto) |
 
@@ -615,13 +629,13 @@ Trascrizioni pre-fix (flat in `data/output/`) non in `index.json`.
 
 ## 8. Come testare le fix
 
-### Test BUG-QUEUE-016 / BUG-UI-017 (coda + upload)
+### Test BUG-QUEUE-016 / BUG-UI-017 / BUG-UI-019 (coda + upload + annulla)
 
-1. `python scripts/restart_ui.py` — una sola istanza
+1. `python scripts/restart_ui.py` — una sola istanza FastAPI
 2. Carica 4 file, un solo click "Accoda"
-3. Verifica: uploader **vuoto**; pannello coda con **4 righe distinte** (1 per file)
-4. `python -c "from sbobinator.jobs import load_active_queue; ..."` — stesso conteggio
-5. Con file ancora in uploader, riclicca Accoda → warning "Saltati", **nessuna** nuova riga in DB
+3. Verifica: uploader **vuoto** dopo redirect; pannello coda con **4 righe distinte**
+4. Clic «Annulla» su job in coda → scompare al primo click
+5. `python -c "from sbobinator.jobs import load_active_queue; ..."` — stesso conteggio DB
 
 ### Test BUG-DATA-002 (storico / no overwrite)
 
@@ -657,6 +671,7 @@ sbobina transcribe data/input/campione-italiano-breve.wav -o data/output
 
 | Data | Modifica |
 |------|----------|
+| 2026-06-28 | BUG-ARCH-020, BUG-QUEUE-016, BUG-UI-017, BUG-UI-019, BUG-ENV-018, BUG-UX-008 → ✅ risolti (migrazione FastAPI); FIX-RIASSUNTO-LLM |
 | 2026-06-28 | BUG-QUEUE-016, BUG-UI-017, BUG-ENV-018; verifica DB benchmark; aggiornamento v0.3.0 |
 | 2026-06-26 | Creazione documento; fix BUG-UI-001, BUG-DATA-002; inventario bug sessione |
 
@@ -666,7 +681,8 @@ sbobina transcribe data/input/campione-italiano-breve.wav -o data/output
 
 | Componente | Path |
 |------------|------|
-| UI Streamlit | `src/sbobinator/ui/app.py` |
+| UI web (FastAPI) | `src/sbobinator/ui/server.py` |
+| UI deprecata (Streamlit) | `src/sbobinator/ui/streamlit_app.deprecated.py` |
 | Registro lavori | `src/sbobinator/jobs.py` |
 | Config / path | `src/sbobinator/config.py` |
 | Trascrizione | `src/sbobinator/transcribe.py` |

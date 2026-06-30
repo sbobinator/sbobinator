@@ -8,14 +8,14 @@
 |----------|-------------|
 | **Trascrizione** | Audio/video → testo + sottotitoli SRT |
 | **Coda job** | Più file elaborati uno alla volta, con storico persistente |
-| **Riassunto** | Estrattivo (veloce, offline) o astrattivo mT5 (qualità, modello locale) |
-| **Interfaccia web** | Streamlit su porta 8501 |
+| **Riassunto** | LLM multi-provider (DeepSeek, OpenAI, Qwen locale, …) |
+| **Interfaccia web** | FastAPI + HTMX su porta 8501 |
 | **CLI** | `sbobina` per automazione e server headless |
 
 ## Principi di progetto
 
 1. **Elaborazione locale** — nessun invio di audio a cloud durante l'uso normale.
-2. **Modelli offline** — Parakeet e mT5 scaricati una volta in `models/`, non a runtime.
+2. **Modelli offline** — Parakeet (ASR) e opzionale Qwen GGUF in `models/`.
 3. **Nessun overwrite** — ogni job ha la sua cartella con timestamp.
 4. **Multipiattaforma** — Python nativo (sviluppo) e Docker Linux (deploy).
 
@@ -34,9 +34,10 @@
 ```cmd
 python scripts\install_local.py
 python scripts\download_model.py
-python scripts\download_summary_model.py
 start.bat
 ```
+
+Riassunto cloud: configura API key su http://localhost:8501/settings/summary
 
 Apri **http://localhost:8501**, carica un file, clicca **Accoda sbobinatura**.
 

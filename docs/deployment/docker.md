@@ -1,6 +1,6 @@
 # Docker
 
-Deploy containerizzato su **Linux** (immagine Debian/Ubuntu). Modelli inclusi nel build.
+Deploy containerizzato su **Linux**. Modello ASR incluso nel build; riassunto LLM via API cloud.
 
 ## Profili
 
@@ -9,7 +9,7 @@ Deploy containerizzato su **Linux** (immagine Debian/Ubuntu). Modelli inclusi ne
 | `sbobinator-cpu` | `cpu` | python:3.12-slim |
 | `sbobinator-gpu` | `gpu` | nvidia/cuda:12.6 |
 
-## Build (include download modelli ~4 GB)
+## Build (~2.5 GB modello ASR)
 
 ```bash
 cd docker
@@ -18,11 +18,10 @@ docker compose --profile cpu build
 
 Durante il build:
 
-1. Installa dipendenze Python (`nemo`, `fastapi`, `uvicorn`, `transformers`, …)
-2. Esegue `download_model.py` → `/models/parakeet-tdt-0.6b-v3.nemo`
-3. Esegue `download_summary_model.py` → `/models/it5-small-news-summarization/`
+1. `pip install -e ".[ui,summarize]"` — FastAPI, NeMo, provider LLM, `truststore`, `llama-cpp-python`
+2. `download_model.py` → `/models/parakeet-tdt-0.6b-v3.nemo`
 
-Il build può richiedere **20–40 minuti** (rete + dimensione modelli).
+**Non** include più IT5. Qwen GGUF opzionale a runtime.
 
 ## Avvio
 
@@ -30,7 +29,7 @@ Il build può richiedere **20–40 minuti** (rete + dimensione modelli).
 docker compose --profile cpu up
 ```
 
-UI **FastAPI** su **http://localhost:8501** (stesso comando `sbobina ui` dentro il container).
+UI: **http://localhost:8501**
 
 ## Volumi
 
@@ -41,10 +40,9 @@ volumes:
 
 | Host | Container | Uso |
 |------|-----------|-----|
-| `./data/input/` | `/data/input/` | Metti file da sbobinare |
-| `./data/output/` | `/data/output/` | Prendi risultati |
-
-**Non** si monta `models/` — i modelli sono nell'immagine.
+| `./data/input/` | `/data/input/` | File sorgente |
+| `./data/output/` | `/data/output/` | Job e risultati |
+| `./data/.secrets/` | `/data/.secrets/` | API key riassunto |
 
 ## Variabili ambiente
 
@@ -52,13 +50,12 @@ volumes:
 environment:
   - NEMO_CACHE_DIR=/models
   - SBOBINATOR_DATA=/data
-  - SBOBINATOR_UI_HOST=0.0.0.0   # obbligatorio in container (porta esposta)
+  - SBOBINATOR_UI_HOST=0.0.0.0
+  # Riassunto cloud (opzionale):
+  - SBOBINATOR_DEEPSEEK_API_KEY=sk-...
 ```
 
-| Variabile | Default locale | Docker |
-|-----------|----------------|--------|
-| `SBOBINATOR_UI_HOST` | `127.0.0.1` | `0.0.0.0` |
-| `SBOBINATOR_DATA` | `data/` nel repo | `/data` (volume) |
+Oppure configura da UI → salvato in `/data/.secrets/summary_keys.json`.
 
 ## GPU
 
@@ -68,40 +65,19 @@ docker compose --profile gpu up
 
 Richiede [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html).
 
-## Solo worker (headless)
+## Differenze vs locale Windows
 
-```yaml
-services:
-  sbobinator-worker:
-    ...
-    command: worker
-```
-
-## Struttura file Docker
-
-```
-docker/
-├── Dockerfile.cpu
-├── Dockerfile.gpu
-└── docker-compose.yml
-```
-
-Entry point: `sbobina ui` → `uvicorn sbobinator.ui.server:app` (non Streamlit).
-
-## Differenze vs Python locale
-
-| Aspetto | Locale Windows | Docker |
-|---------|----------------|--------|
-| UI | FastAPI su `127.0.0.1:8501` | FastAPI su `0.0.0.0:8501` |
-| Modelli | `models/` nel repo | `/models` in immagine |
-| Dati | `data/` nel repo | Volume `/data` |
-| SSL download | curl.exe (Windows) | curl Linux al build |
-| NeMo thread | Worker subprocess | Stesso pattern |
+| Aspetto | Locale | Docker |
+|---------|--------|--------|
+| UI | `127.0.0.1:8501` | `0.0.0.0:8501` |
+| ASR | `models/` nel repo | `/models` in immagine |
+| Riassunto cloud | API key in secrets | Stesso (volume `/data`) |
+| Qwen locale | `download_summary_llm.py` | Opzionale nel container |
+| SSL API | `truststore` (Windows) | Di solito non serve (Linux) |
 
 ## Produzione
 
-- Pre-build l'immagine una volta
-- Monta solo `data/` dal host
-- Backup di `data/output/jobs/` per storico
-- Non serve entrare nel container per file input/output
-- Healthcheck HTTP su `/partials/queue` (vedi `docker-compose.yml`)
+- Pre-build immagine una volta
+- Monta solo `data/`
+- Backup `data/output/jobs/`
+- Healthcheck su `/partials/queue`

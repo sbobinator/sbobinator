@@ -1,6 +1,6 @@
-# Volumi: solo ../data (input + output/jobs sul host).
-# Modelli ASR + IT5 riassunto sono nell'immagine Docker (/models), scaricati al build.
-# UI: FastAPI + uvicorn (sbobinator.ui.server), non più Streamlit.
+# Volumi: ../data (input, output/jobs, .secrets con API key riassunto).
+# Modelli ASR Parakeet nell'immagine (/models). Riassunto LLM via API cloud o Qwen scaricato a runtime.
+# UI: FastAPI + uvicorn su porta 8501.
 services:
   sbobinator-cpu:
     build:
@@ -16,6 +16,9 @@ services:
       - NEMO_CACHE_DIR=/models
       - SBOBINATOR_DATA=/data
       - SBOBINATOR_UI_HOST=0.0.0.0
+      # API key riassunto (opzionale — oppure salva da UI in /data/.secrets/summary_keys.json):
+      # - SBOBINATOR_DEEPSEEK_API_KEY=
+      # - SBOBINATOR_OPENAI_API_KEY=
     command: ui --port 8501
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8501/partials/queue"]
@@ -45,6 +48,7 @@ services:
       - NEMO_CACHE_DIR=/models
       - SBOBINATOR_DATA=/data
       - SBOBINATOR_UI_HOST=0.0.0.0
+      # - SBOBINATOR_DEEPSEEK_API_KEY=
     command: ui --port 8501
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8501/partials/queue"]

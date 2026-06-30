@@ -15,6 +15,18 @@ dependencies = [
     "rich>=13.0",
 ]
 
+# Extra installabili (fonte di verità — requirements/*.txt sono alias):
+#
+#   pip install -e ".[local]"     → installazione completa (consigliata)
+#   pip install -e ".[ui]"          → web UI + riassunto cloud (API key)
+#   pip install -e ".[summarize]"   → solo moduli riassunto LLM
+#   pip install -e ".[asr]"         → solo trascrizione NeMo
+#
+# Dipendenze riassunto LLM (in ui, summarize, local):
+#   openai, anthropic, google-genai, truststore (SSL Windows), psutil
+# Solo summarize/local aggiungono:
+#   llama-cpp-python, huggingface_hub (Qwen GGUF locale)
+
 [project.optional-dependencies]
 asr = [
     "torch>=2.7",
@@ -25,10 +37,20 @@ ui = [
     "uvicorn[standard]>=0.32",
     "jinja2>=3.1",
     "python-multipart>=0.0.12",
+    "openai>=1.0",
+    "anthropic>=0.40",
+    "google-genai>=1.0",
+    "truststore>=0.10",
+    "psutil>=6.0",
 ]
 summarize = [
-    "transformers>=4.40",
-    "sentencepiece>=0.2",
+    "openai>=1.0",
+    "anthropic>=0.40",
+    "google-genai>=1.0",
+    "truststore>=0.10",
+    "llama-cpp-python>=0.3",
+    "psutil>=6.0",
+    "huggingface_hub>=0.26",
 ]
 local = [
     "torch>=2.7",
@@ -37,8 +59,13 @@ local = [
     "uvicorn[standard]>=0.32",
     "jinja2>=3.1",
     "python-multipart>=0.0.12",
-    "transformers>=4.40",
-    "sentencepiece>=0.2",
+    "openai>=1.0",
+    "anthropic>=0.40",
+    "google-genai>=1.0",
+    "truststore>=0.10",
+    "llama-cpp-python>=0.3",
+    "psutil>=6.0",
+    "huggingface_hub>=0.26",
 ]
 dev = [
     "ruff>=0.8",

@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Benchmark riassunti offline — solo trascrizioni, senza UI né pipeline ASR.
+"""Benchmark riassunti LLM — solo trascrizioni, senza UI né pipeline ASR.
 
-Genera un report confrontabile in docs/summary-benchmark/runs/<timestamp>/
-con tutte le combinazioni modalità × lunghezza su ogni trascrizione trovata.
+Genera un report in docs/summary-benchmark/runs/<timestamp>/
 
 Uso:
-  python scripts/summary_benchmark.py
-  python scripts/summary_benchmark.py --jobs-dir data/output/jobs
-  python scripts/summary_benchmark.py --only campione-italiano-lungo
+  python scripts/summary_benchmark.py --provider openai
+  python scripts/summary_benchmark.py --provider local --only campione-italiano-lungo
 """
 
 from __future__ import annotations
@@ -27,12 +25,9 @@ DEFAULT_OUT = ROOT / "docs" / "summary-benchmark" / "runs"
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
-from sbobinator.config import (  # noqa: E402
-    SummaryLength,
-    SummaryMode,
-    local_summary_model_available,
-)
-from sbobinator.summarize import summarize, unload_abstractive_model  # noqa: E402
+from sbobinator.config import SummaryLength  # noqa: E402
+from sbobinator.summarize import summarize, unload_summary_models  # noqa: E402
+from sbobinator.summarize_providers.registry import PROVIDER_IDS, get_provider  # noqa: E402
 
 LENGTHS = (
     SummaryLength.auto,
@@ -46,11 +41,13 @@ LENGTHS = (
 class RunRow:
     source_id: str
     source_path: str
-    mode: str
+    provider: str
+    model: str
+    strategy: str
     length: str
     source_words: int
     source_chars: int
-    source_sentences: int
+    input_tokens: int
     summary_words: int
     summary_chars: int
     summary_sentences: int
@@ -76,10 +73,10 @@ def _word_count(text: str) -> int:
     return len(text.split())
 
 
-def _run_one(label: str, source_path: Path, mode: SummaryMode, length: SummaryLength) -> RunRow:
+def _run_one(label: str, source_path: Path, provider_id: str, length: SummaryLength) -> RunRow:
     text = source_path.read_text(encoding="utf-8").strip()
     t0 = time.perf_counter()
-    result = summarize(text, mode=mode, length=length)
+    result = summarize(text, provider=provider_id, length=length)
     elapsed = time.perf_counter() - t0
     src_words = _word_count(text)
     sum_words = _word_count(result.text)
@@ -87,11 +84,13 @@ def _run_one(label: str, source_path: Path, mode: SummaryMode, length: SummaryLe
     return RunRow(
         source_id=label,
         source_path=str(source_path.resolve()),
-        mode=mode.value,
+        provider=result.provider,
+        model=result.model,
+        strategy=result.strategy,
         length=length.value,
         source_words=src_words,
         source_chars=len(text),
-        source_sentences=result.source_sentences,
+        input_tokens=result.input_tokens,
         summary_words=sum_words,
         summary_chars=len(result.text),
         summary_sentences=result.summary_sentences,
@@ -101,7 +100,7 @@ def _run_one(label: str, source_path: Path, mode: SummaryMode, length: SummaryLe
     )
 
 
-def _write_report(out_dir: Path, rows: list[RunRow], abstractive_ok: bool) -> None:
+def _write_report(out_dir: Path, rows: list[RunRow], provider_id: str) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     by_source: dict[str, list[RunRow]] = {}
@@ -121,9 +120,10 @@ def _write_report(out_dir: Path, rows: list[RunRow], abstractive_ok: bool) -> No
                 {
                     "source_id": label,
                     "source_path": meta.source_path,
+                    "provider": provider_id,
                     "source_words": meta.source_words,
                     "source_chars": meta.source_chars,
-                    "source_sentences": meta.source_sentences,
+                    "input_tokens": meta.input_tokens,
                 },
                 ensure_ascii=False,
                 indent=2,
@@ -131,48 +131,39 @@ def _write_report(out_dir: Path, rows: list[RunRow], abstractive_ok: bool) -> No
             encoding="utf-8",
         )
         for row in source_rows:
-            fname = f"{row.mode}_{row.length}.txt"
+            fname = f"{row.length}.txt"
             header = (
-                f"# {row.mode} / {row.length}\n"
+                f"# provider: {row.provider} / model: {row.model} / {row.length}\n"
+                f"# strategia: {row.strategy} | token input stimati: {row.input_tokens}\n"
                 f"# parole sorgente: {row.source_words} -> riassunto: {row.summary_words} "
                 f"({row.compression_pct}%)\n"
-                f"# frasi: {row.source_sentences} -> {row.summary_sentences} | "
-                f"tempo: {row.seconds}s\n\n"
+                f"# frasi out: {row.summary_sentences} | tempo: {row.seconds}s\n\n"
             )
             (src_dir / fname).write_text(header + row.summary_text, encoding="utf-8")
 
     md_lines = [
-        "# Benchmark riassunti Sbobinator",
+        "# Benchmark riassunti LLM — Sbobinator",
         "",
         f"Generato: {datetime.now().isoformat(timespec='seconds')}",
-        f"IT5 disponibile: {'sì' if abstractive_ok else 'no'}",
+        f"Provider: `{provider_id}`",
         "",
         "## Tabella comparativa",
         "",
-        "| Sorgente | Modalità | Lunghezza | Parole src | Parole out | % | Frasi out | sec |",
-        "|----------|----------|-----------|------------|------------|---|-----------|-----|",
+        "| Sorgente | Lunghezza | Parole src | Token ~ | Parole out | % | Strategia | sec |",
+        "|----------|-----------|------------|---------|------------|---|-----------|-----|",
     ]
     for row in rows:
         md_lines.append(
-            f"| {row.source_id} | {row.mode} | {row.length} | "
-            f"{row.source_words} | {row.summary_words} | {row.compression_pct} | "
-            f"{row.summary_sentences} | {row.seconds} |"
+            f"| {row.source_id} | {row.length} | {row.source_words} | {row.input_tokens} | "
+            f"{row.summary_words} | {row.compression_pct} | {row.strategy} | {row.seconds} |"
         )
     md_lines.extend(
         [
             "",
             "## Come leggere",
             "",
-            "- Cartella per sorgente: contiene `_sorgente.txt` e un file per ogni combinazione.",
-            "- **extractive** = sintesi LexRank (frasi originali selezionate).",
-            "- **abstractive** = IT5 (`gsarti/it5-small-news-summarization`).",
-            "- Confronta qualità e copertura del contenuto, non solo la lunghezza.",
-            "",
-            "## Note qualità (da valutare a mano)",
-            "",
-            "- Riassunto troppo corto rispetto al testo sorgente?",
-            "- Perde concetti chiave della trascrizione?",
-            "- IT5 addestrato su **news**, non su parlato/interviste: può deformare il senso.",
+            "- Un file per lunghezza in ogni cartella sorgente.",
+            "- Valuta qualità: contesto, punti chiave, niente invenzioni.",
             "",
         ]
     )
@@ -188,12 +179,25 @@ def _safe_name(name: str) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Benchmark riassunti su trascrizioni esistenti")
+    parser = argparse.ArgumentParser(description="Benchmark riassunto LLM su trascrizioni esistenti")
     parser.add_argument("--jobs-dir", type=Path, default=DEFAULT_JOBS)
-    parser.add_argument("--out-dir", type=Path, default=None, help="Cartella output (default: docs/.../runs/TIMESTAMP)")
-    parser.add_argument("--only", type=str, default=None, help="Filtra per nome sorgente (es. campione-italiano-lungo)")
-    parser.add_argument("--skip-abstractive", action="store_true")
+    parser.add_argument("--out-dir", type=Path, default=None)
+    parser.add_argument("--only", type=str, default=None)
+    parser.add_argument(
+        "--provider",
+        type=str,
+        default="openai",
+        choices=list(PROVIDER_IDS),
+        help="Provider LLM da testare",
+    )
     args = parser.parse_args()
+
+    provider_id = args.provider.strip().lower()
+    impl = get_provider(provider_id)
+    ok, reason = impl.is_available()
+    if not ok:
+        print(f"Provider {provider_id} non disponibile: {reason}")
+        return 1
 
     transcripts = _find_transcripts(args.jobs_dir, args.only)
     if not transcripts:
@@ -201,36 +205,28 @@ def main() -> int:
         return 1
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    out_dir = args.out_dir or (DEFAULT_OUT / ts)
-    abstractive_ok = local_summary_model_available() and not args.skip_abstractive
+    out_dir = args.out_dir or (DEFAULT_OUT / f"{ts}_{provider_id}")
 
-    modes: list[SummaryMode] = [SummaryMode.extractive]
-    if abstractive_ok:
-        modes.append(SummaryMode.abstractive)
-    else:
-        print("IT5 non disponibile — solo sintesi estrattiva.")
-
+    print(f"Provider: {provider_id} ({impl.default_model()})")
     print(f"Trovate {len(transcripts)} trascrizioni -> output: {out_dir}")
     rows: list[RunRow] = []
 
     try:
         for label, path in transcripts:
             print(f"\n=== {label} ===")
-            for mode in modes:
-                for length in LENGTHS:
-                    tag = f"{mode.value}/{length.value}"
-                    print(f"  {tag}...", end=" ", flush=True)
-                    row = _run_one(label, path, mode, length)
-                    rows.append(row)
-                    print(
-                        f"{row.summary_words} parole ({row.compression_pct}%), "
-                        f"{row.seconds}s"
-                    )
+            for length in LENGTHS:
+                tag = f"{length.value}"
+                print(f"  {tag}...", end=" ", flush=True)
+                row = _run_one(label, path, provider_id, length)
+                rows.append(row)
+                print(
+                    f"{row.summary_words} parole ({row.compression_pct}%), "
+                    f"{row.strategy}, {row.seconds}s"
+                )
     finally:
-        if abstractive_ok:
-            unload_abstractive_model()
+        unload_summary_models()
 
-    _write_report(out_dir, rows, abstractive_ok)
+    _write_report(out_dir, rows, provider_id)
     print(f"\nReport: {out_dir / 'REPORT.md'}")
     return 0
 

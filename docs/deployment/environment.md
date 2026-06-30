@@ -1,78 +1,78 @@
 # Variabili d'ambiente
 
-## `SBOBINATOR_DATA`
+Elenco completo in [`.env.example`](../../.env.example) (solo variabili lette dal codice).
 
-Cartella radice dati (input + output).
+## Percorsi
+
+### `SBOBINATOR_DATA`
+
+Cartella radice dati (input, output, `.secrets`).
 
 | Valore | Effetto |
 |--------|---------|
 | Non impostata | `{project_root}/data` |
-| `/data` (Docker) | `jobs` in `/data/output/jobs` |
-| Path assoluto | Usato così com'è |
-| Path relativo | Relativo a `project_root` |
+| `/data` (Docker) | Volume container |
 
-Funzioni: `data_dir()`, `input_dir()`, `output_dir()`, `jobs_root()`.
+### `NEMO_CACHE_DIR`
 
----
-
-## `NEMO_CACHE_DIR`
-
-Cartella modelli (Parakeet `.nemo` e `it5-small-news-summarization/`).
+Cartella modelli ASR (`.nemo`) e opzionale Qwen GGUF.
 
 | Valore | Effetto |
 |--------|---------|
 | Non impostata | `{project_root}/models` |
 | `/models` (Docker) | Modelli nell'immagine |
 
-Funzioni: `models_dir()`, `local_model_path()`, `summary_model_dir()`.
-
 ---
 
-## `PYTHONUNBUFFERED`
+## Interfaccia web
 
-Impostata nei Dockerfile (`1`) per log immediati.
-
----
-
-## `SBOBINATOR_UI_HOST`
-
-Host su cui uvicorn espone l'interfaccia web.
+### `SBOBINATOR_UI_HOST`
 
 | Valore | Effetto |
 |--------|---------|
-| Non impostata | `127.0.0.1` (solo localhost — Windows/Linux locale) |
-| `0.0.0.0` | Tutte le interfacce — **obbligatorio in Docker** per `ports: 8501:8501` |
+| Non impostata | `127.0.0.1` |
+| `0.0.0.0` | Docker — espone porta 8501 |
 
 ---
 
-## Esempio Docker Compose
+## API key riassunto LLM
+
+Alternative al file `data/.secrets/summary_keys.json`:
+
+| Variabile | Provider |
+|-----------|----------|
+| `SBOBINATOR_DEEPSEEK_API_KEY` | DeepSeek |
+| `SBOBINATOR_OPENAI_API_KEY` | OpenAI |
+| `SBOBINATOR_GEMINI_API_KEY` | Gemini |
+| `SBOBINATOR_ANTHROPIC_API_KEY` | Claude |
+| `SBOBINATOR_KIMI_API_KEY` | Kimi |
+
+Configurazione consigliata: UI → `/settings/summary`.
+
+---
+
+## Docker Compose
 
 ```yaml
 environment:
   - NEMO_CACHE_DIR=/models
   - SBOBINATOR_DATA=/data
   - SBOBINATOR_UI_HOST=0.0.0.0
+  - SBOBINATOR_DEEPSEEK_API_KEY=sk-...
 volumes:
   - ../data:/data
 ```
 
 ---
 
-## Esempio sviluppo locale
-
-Nessuna variabile necessaria — default `data/` e `models/` nella root del repo.
-
----
-
-## Verifica path attivi
-
-```python
-from sbobinator.config import data_dir, models_dir, jobs_root
-print(data_dir(), models_dir(), jobs_root())
-```
-
-Oppure:
+## Verifica
 
 ```cmd
 sbobina info
+```
+
+```python
+from sbobinator.config import data_dir, models_dir
+from sbobinator.summary_config import secrets_path
+print(data_dir(), models_dir(), secrets_path())
 ```

@@ -1,0 +1,3 @@
+# Solo interfaccia web + provider riassunto cloud (senza NeMo ASR)
+# Uso: pip install -r requirements/ui.txt
+-e .[ui]

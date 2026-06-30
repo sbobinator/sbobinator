@@ -1,75 +1,58 @@
 # SSL su Windows
 
-## Il problema
+## Problema 1 — Download modelli (HuggingFace)
 
-Su Windows, **Python 3.13** spesso non valida i certificati SSL verso `huggingface.co`:
+Su **Python 3.13 / Windows**, `huggingface_hub` può fallire con:
 
 ```
-SSLCertVerificationError: certificate verify failed: unable to get local issuer certificate
+SSLCertVerificationError: certificate verify failed
 ```
 
-Succede con:
+**Soluzione:** scarica modelli con **curl** (usa certificati Windows):
 
-- `transformers` / `huggingface_hub` download a runtime
-- `urllib` / `requests` verso HuggingFace
-
-**Non** succede con **curl.exe** che usa il certificate store di Windows.
+| Modello | Script |
+|---------|--------|
+| Parakeet ASR | `scripts/download_model.py` |
+| Qwen riassunto | `scripts/download_summary_llm.py` |
 
 ---
 
-## Soluzione Sbobinator
+## Problema 2 — API riassunto cloud (`Connection error`)
 
-### Mai scaricare modelli a runtime
-
-| Modello | Approccio |
-|---------|-----------|
-| Parakeet | `scripts/download_model.py` (curl) |
-| mT5 | `scripts/download_summary_model.py` (curl) |
-
-A runtime `transcribe.py` e `summarize.py` leggono **solo file locali**.
-
-### Se vedi ancora errori SSL
-
-1. Verifica di non usare vecchia versione che scaricava `google/mt5-small` online
-2. Completa download in `models/mt5-small/`
-3. Riavvia con `restart_ui.py`
-
----
-
-## Download manuale alternativo
-
-Se gli script falliscono, scarica da browser:
-
-1. [Parakeet .nemo](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3/tree/main)
-2. [mT5-small](https://huggingface.co/google/mt5-small/tree/main)
-
-Metti in:
+Su Windows, le chiamate **DeepSeek / OpenAI / …** via SDK Python (`httpx`) possono fallire con:
 
 ```
-models/parakeet-tdt-0.6b-v3.nemo
-models/mt5-small/   (tutti i file del repo)
+Connection error.
 ```
 
----
+**Causa:** Python non usa il certificate store di Windows.
 
-## Docker / Linux / WSL
+**Soluzione:** pacchetto `truststore` (già in `requirements/local.txt`):
 
-In container Linux il problema è raro. L'immagine Docker scarica al **build** con curl Debian.
+```cmd
+pip install truststore
+pip install -r requirements/local.txt
+```
 
-WSL Ubuntu: stessi script Python, curl di Linux.
+Poi riavvia: `python scripts\restart_ui.py`
+
+Sbobinator chiama `truststore.inject_into_ssl()` all'avvio (`http_ssl.py`).
 
 ---
 
 ## Cosa NON fare
 
-- Non disabilitare SSL globalmente in produzione
-- Non usare `HF_HUB_DISABLE_SSL` come soluzione permanente
-- Non affidarsi a download HuggingFace da Python su Windows in produzione
-
-L'architettura corretta è: **download una tantum → uso offline**.
+- Non disabilitare SSL globalmente
+- Non usare `HF_HUB_DISABLE_SSL` in produzione
 
 ---
 
-## Riferimento interno
+## Docker / Linux
 
-Documentato anche in `bug-fix/TRACCIAMENTO-BUG.md` come BUG-ENV-001 / BUG-WIN-011.
+In container Linux entrambi i problemi sono rari. `truststore` è installato ma di solito non necessario.
+
+---
+
+## Riferimento
+
+`bug-fix/TRACCIAMENTO-BUG.md` — BUG-ENV-001, BUG-WIN-011.

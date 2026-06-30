@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Impostazioni riassunto — Sbobinator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="layout layout-settings">
+    <aside class="sidebar sidebar-nav">
+      <h2>Sbobinator</h2>
+      <nav class="settings-nav">
+        <a href="/" class="nav-link">← Home / Coda</a>
+        <a href="/settings/summary" class="nav-link active">Riassunto LLM</a>
+      </nav>
+      <footer class="sidebar-footer">
+        <p class="hint">v{{ version }}</p>
+      </footer>
+    </aside>
+
+    <main class="main main-wide">
+      <header class="hero hero-compact">
+        <h1>Impostazioni riassunto LLM</h1>
+        <p>Configura API key cloud, verifica i motori disponibili e prepara il modello locale.</p>
+      </header>
+
+      {% if flash %}
+      <div class="flash flash-{{ flash_type }}">{{ flash }}</div>
+      {% endif %}
+
+      <section class="panel settings-section">
+        <h2>1. Stato motori</h2>
+        <p class="hint">Dopo aver salvato le API key o scaricato il modello locale, lo stato diventa «Pronto».</p>
+        <div class="provider-status-grid">
+          {% for p in summary_providers %}
+          <div class="provider-status-card {% if p.available %}status-ok{% else %}status-ko{% endif %}"
+               id="status-{{ p.id }}">
+            <strong>{{ p.label }}</strong>
+            <span class="status-badge">{% if p.available %}Pronto{% else %}Da configurare{% endif %}</span>
+            {% if not p.available %}
+            <p class="hint">{{ p.reason }}</p>
+            {% else %}
+            <p class="hint">Modello: <code>{{ p.default_model }}</code></p>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="panel settings-section">
+        <h2>2. API key cloud</h2>
+        <p class="hint">
+          Le chiavi vengono salvate in <code>{{ secrets_path }}</code> (mai in git).
+          In alternativa puoi usare le variabili d'ambiente elencate sotto ogni campo.
+        </p>
+        <form action="/api/settings/summary-keys" method="post" class="cloud-keys-form">
+          {% for p in cloud_providers %}
+          <div class="provider-key-card {% if highlight_provider == p.id %}highlight{% endif %}"
+               id="provider-{{ p.id }}">
+            <div class="provider-key-header">
+              <h3>{{ p.label }}</h3>
+              <span class="status-badge {% if p.available %}status-ok{% else %}status-ko{% endif %}">
+                {% if p.has_key %}Key salvata{% else %}Key mancante{% endif %}
+              </span>
+            </div>
+            <p class="hint">Modello default: <code>{{ p.default_model }}</code></p>
+            <p class="hint">Env: <code>{{ p.env_var }}</code></p>
+            <label>API key
+              <input type="password" name="{{ p.id }}_key"
+                     placeholder="{% if p.has_key %}•••• lascia vuoto per non cambiare{% else %}incolla la API key{% endif %}"
+                     autocomplete="off">
+            </label>
+            <div class="provider-key-actions">
+              <button type="button" class="btn btn-secondary btn-small test-provider-btn" data-provider="{{ p.id }}">
+                Test connessione
+              </button>
+              <span class="hint test-result" id="test-{{ p.id }}"></span>
+            </div>
+          </div>
+          {% endfor %}
+          <button type="submit" class="btn btn-primary">Salva API key</button>
+        </form>
+      </section>
+
+      <section class="panel settings-section" id="provider-local">
+        <h2>3. LLM locale (Qwen, offline)</h2>
+        <div class="local-status {% if local_provider.available %}status-ok{% else %}status-ko{% endif %}">
+          <p>
+            <strong>Stato:</strong>
+            {% if local_provider.available %}Pronto{% else %}Non disponibile{% endif %}
+          </p>
+          {% if system_ram_gb is not none %}
+          <p>RAM sistema: <strong>~{{ system_ram_gb }} GB</strong> (richiesti ≥ {{ min_ram_gb }} GB)</p>
+          {% endif %}
+          {% if local_gguf_path %}
+          <p>Modello trovato: <code>{{ local_gguf_path }}</code></p>
+          {% else %}
+          <p class="warning">Modello GGUF non trovato in <code>{{ local_llm_dir }}</code></p>
+          {% endif %}
+          {% if local_provider and not local_provider.available %}
+          <p class="hint">{{ local_provider.reason }}</p>
+          {% endif %}
+        </div>
+
+        <h3>Come attivarlo</h3>
+        <ol class="steps-list">
+          <li>Installa dipendenze: <code>pip install -e ".[summarize]"</code></li>
+          <li>Scarica il modello (~2 GB):
+            <pre class="cmd-block">python scripts/download_summary_llm.py</pre>
+          </li>
+          <li>Verifica che esista <code>models/{{ local_llm_folder }}/{{ local_llm_gguf_file }}</code></li>
+          <li>Torna alla <a href="/">home</a>, abilita «Genera riassunto» e scegli <strong>LLM locale (Qwen)</strong></li>
+        </ol>
+        <p class="hint warning">
+          Su CPU il riassunto locale è lento (anche 5–15 minuti su audio lunghi). Nessuna API key richiesta.
+        </p>
+      </section>
+
+      <section class="panel settings-section">
+        <h2>4. Usare il riassunto</h2>
+        <ol class="steps-list">
+          <li>Configura almeno un motore sopra (cloud o locale).</li>
+          <li>Vai alla <a href="/">home</a>.</li>
+          <li>Spunta <strong>Genera riassunto</strong>, scegli il motore e la lunghezza.</li>
+          <li>Carica i file e accoda.</li>
+        </ol>
+      </section>
+    </main>
+  </div>
+  <script>
+    document.querySelectorAll('.test-provider-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const pid = btn.dataset.provider;
+        const card = btn.closest('.provider-key-card');
+        const input = card ? card.querySelector('input[type="password"]') : null;
+        const out = document.getElementById('test-' + pid);
+        if (out) out.textContent = 'Test in corso...';
+        try {
+          const body = new FormData();
+          if (input && input.value.trim()) {
+            body.append('api_key', input.value.trim());
+          }
+          const r = await fetch('/api/settings/test-provider/' + pid, { method: 'POST', body });
+          const data = await r.json();
+          if (out) {
+            out.textContent = data.ok ? '✓ ' + data.message : '✗ ' + data.message;
+            if (data.ok && input && input.value.trim()) {
+              out.textContent += ' — clicca «Salva API key» per memorizzarla';
+            }
+          }
+        } catch (e) {
+          if (out) out.textContent = '✗ Errore di rete';
+        }
+      });
+    });
+    const highlight = '{{ highlight_provider }}';
+    if (highlight) {
+      const el = document.getElementById('provider-' + highlight) || document.getElementById('status-' + highlight);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  </script>
+</body>
+</html>

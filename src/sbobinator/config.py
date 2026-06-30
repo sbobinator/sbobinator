@@ -193,7 +193,40 @@ class SummaryLength(str, Enum):
     detailed = "detailed"
 
 
+# LLM locale per riassunto (Qwen2.5 GGUF via llama.cpp)
+LOCAL_LLM_FOLDER = "qwen2.5-3b-instruct"
+LOCAL_LLM_GGUF_FILE = "qwen2.5-3b-instruct-q4_k_m.gguf"
+LOCAL_LLM_CTX = 8192
+MIN_RAM_GB = 16
 
+
+def local_llm_dir() -> Path:
+    return models_dir() / LOCAL_LLM_FOLDER
+
+
+def local_gguf_path() -> Path | None:
+    direct = local_llm_dir() / LOCAL_LLM_GGUF_FILE
+    if direct.is_file() and direct.stat().st_size > 1_000_000:
+        return direct.resolve()
+    folder = local_llm_dir()
+    if folder.is_dir():
+        for candidate in sorted(folder.glob("*.gguf")):
+            if candidate.stat().st_size > 1_000_000:
+                return candidate.resolve()
+    return None
+
+
+def local_llm_available() -> bool:
+    return local_gguf_path() is not None
+
+
+def system_ram_gb() -> float | None:
+    try:
+        import psutil
+
+        return psutil.virtual_memory().total / (1024**3)
+    except ImportError:
+        return None
 
 
 @dataclass(frozen=True)
