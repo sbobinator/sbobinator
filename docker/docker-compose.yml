@@ -1,5 +1,5 @@
 # Volumi: ../data (input, output/jobs, .secrets con API key riassunto).
-# Modelli ASR Parakeet nell'immagine (/models). Riassunto LLM via API cloud o Qwen scaricato a runtime.
+# Modelli ASR Parakeet nell'immagine (/models). Qwen locale: auto-download all'avvio se RAM ≥ 16 GB.
 # UI: FastAPI + uvicorn su porta 8501.
 services:
   sbobinator-cpu:
@@ -9,9 +9,10 @@ services:
     image: sbobinator:cpu
     profiles: ["cpu"]
     ports:
-      - "8501:8501"
+      - "8502:8501"
     volumes:
       - ../data:/data
+      - sbobinator-qwen:/models/qwen2.5-3b-instruct
     environment:
       - NEMO_CACHE_DIR=/models
       - SBOBINATOR_DATA=/data
@@ -19,13 +20,13 @@ services:
       # API key riassunto (opzionale — oppure salva da UI in /data/.secrets/summary_keys.json):
       # - SBOBINATOR_DEEPSEEK_API_KEY=
       # - SBOBINATOR_OPENAI_API_KEY=
-    command: ui --port 8501
+    command: docker-ui --port 8501
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8501/partials/queue"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 40s
+      start_period: 900s
 
   sbobinator-gpu:
     build:
@@ -41,18 +42,22 @@ services:
               count: 1
               capabilities: [gpu]
     ports:
-      - "8501:8501"
+      - "8502:8501"
     volumes:
       - ../data:/data
+      - sbobinator-qwen:/models/qwen2.5-3b-instruct
     environment:
       - NEMO_CACHE_DIR=/models
       - SBOBINATOR_DATA=/data
       - SBOBINATOR_UI_HOST=0.0.0.0
       # - SBOBINATOR_DEEPSEEK_API_KEY=
-    command: ui --port 8501
+    command: docker-ui --port 8501
     healthcheck:
       test: ["CMD", "curl", "-f", "http://127.0.0.1:8501/partials/queue"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 40s
+      start_period: 900s
+
+volumes:
+  sbobinator-qwen:

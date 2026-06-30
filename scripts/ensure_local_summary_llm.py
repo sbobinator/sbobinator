@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scarica il modello GGUF Qwen2.5 per riassunto locale."""
+"""Docker / avvio: scarica Qwen locale se RAM sufficiente."""
 
 from __future__ import annotations
 
@@ -9,11 +9,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from sbobinator.local_llm_download import download_local_summary_llm  # noqa: E402
+from sbobinator.local_llm_download import ensure_local_summary_llm_auto  # noqa: E402
 
 
 def main() -> int:
-    return download_local_summary_llm()
+    ensure_local_summary_llm_auto()
+    return 0
 
 
 if __name__ == "__main__":

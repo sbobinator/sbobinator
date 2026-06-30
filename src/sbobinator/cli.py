@@ -69,6 +69,18 @@ def ui(
     launch_ui(port=port)
 
 
+@app.command("docker-ui")
+def docker_ui(
+    port: int = typer.Option(8501, "--port", "-p", help="Porta del server web"),
+) -> None:
+    """Avvio container Docker: verifica RAM, scarica Qwen se possibile, poi UI."""
+    from sbobinator.local_llm_download import ensure_local_summary_llm_auto
+
+    ensure_local_summary_llm_auto()
+    console.print(f"[bold cyan]Interfaccia web su http://localhost:{port}[/bold cyan]")
+    launch_ui(port=port)
+
+
 @app.command()
 def worker(
     poll_interval: float = typer.Option(1.0, "--interval", help="Secondi tra un poll e l'altro"),

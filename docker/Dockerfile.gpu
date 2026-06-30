@@ -1,6 +1,6 @@
 # Sbobinator — profilo GPU (NVIDIA CUDA)
 # Build: immagine con modello ASR Parakeet in /models (~2.5 GB).
-# Riassunto LLM: API cloud (key in env o data/.secrets/); Qwen locale opzionale a runtime.
+# Riassunto LLM: API cloud o Qwen locale (auto-download all'avvio se RAM ≥ 16 GB).
 FROM nvidia/cuda:12.6.0-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -23,7 +23,7 @@ WORKDIR /app
 
 COPY pyproject.toml README.md ./
 COPY src/ src/
-COPY scripts/download_model.py scripts/download_summary_llm.py scripts/
+COPY scripts/download_model.py scripts/download_summary_llm.py scripts/ensure_local_summary_llm.py scripts/
 
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu126 \

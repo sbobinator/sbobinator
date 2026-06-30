@@ -87,7 +87,7 @@ docker compose --profile cpu build
 docker compose --profile cpu up
 ```
 
-Solo modello ASR nell'immagine; riassunto via API key (`SBOBINATOR_DEEPSEEK_API_KEY` o UI). Vedi [docs/deployment/docker.md](docs/deployment/docker.md).
+Solo modello ASR nell'immagine; **Qwen locale si scarica da solo** all'avvio se RAM ≥ 16 GB. Riassunto cloud via API key. Vedi [docs/deployment/docker.md](docs/deployment/docker.md).
 
 ## Modello
 
