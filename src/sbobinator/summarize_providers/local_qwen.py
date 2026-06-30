@@ -95,7 +95,14 @@ class LocalQwenProvider:
         return 6000
 
     def chunk_char_limit(self) -> int:
-        return 12000
+        return 4000
+
+    def use_map_reduce(self, tokens: int, chars: int) -> bool:
+        """Qwen 3B: spezza testi medi/lunghi per qualità e copertura."""
+        return tokens > 350 or chars > 1500
+
+    def merge_batch_size(self) -> int:
+        return 4
 
     def complete(
         self,
@@ -113,7 +120,7 @@ class LocalQwenProvider:
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            temperature=0.3,
+            temperature=0.2,
             max_tokens=2048,
         )
         content = out["choices"][0]["message"]["content"]

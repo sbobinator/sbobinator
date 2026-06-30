@@ -2,9 +2,9 @@
 
 > **File:** `bug-fix/FIX-RIASSUNTO-LLM.md`  
 > **Creato:** 2026-06-28  
-> **Aggiornato:** 2026-06-28 (multi-provider + design UI)  
-> **Stato:** 📋 Pianificazione — **nessuna implementazione codice** finché non approvato dopo benchmark  
-> **Correlato:** `BUG-SUM-019`, `BUG-SUM-020`, `docs/summary-benchmark/`
+> **Aggiornato:** 2026-06-30 (implementazione core + test deploy; qualità locale aperta)  
+> **Stato:** 🔧 **Implementato** (v0.3.x) — qualità riassunto locale ancora **insufficiente** (BUG-SUM-022…026 in [`TRACCIAMENTO-BUG.md`](TRACCIAMENTO-BUG.md))  
+> **Correlato:** `BUG-SUM-019` ✅, `BUG-SUM-020` 🔧, `BUG-SUM-021` ✅, `BUG-SUM-022…026` 📋
 
 ---
 
@@ -39,7 +39,17 @@ La feature **riassunto** in Sbobinator **non è accettabile in produzione** nell
 - Utente che vuole **qualità massima e velocità** → **Claude / GPT / Gemini** (a pagamento)
 - Utente che vuole **costo basso** → **DeepSeek / Kimi** o locale
 
-**Blocco esplicito:** nessuna modifica al codice applicativo finché non si completa benchmark (locale + almeno 2 cloud) e approvazione utente.
+**Stato al 30/06/2026:**
+
+| Area | Stato |
+|------|-------|
+| Architettura multi-provider | ✅ Completata |
+| UI selezione provider + API keys | ✅ Completata |
+| Qwen locale + Docker auto-download | ✅ Completata |
+| SSL cloud Windows (`truststore`) | ✅ Completata |
+| **Qualità riassunto locale** | ❌ **Non accettabile per produzione** — lavoro aperto |
+
+**Blocco qualità (30/06):** il codice gira end-to-end, ma l'output Qwen 3B non soddisfa il criterio utente *«riassunto fatto bene»*. Fix in corso di tracciamento: prompt, map-reduce obbligatorio, scala 3 h.
 
 ---
 
@@ -53,21 +63,28 @@ La feature **riassunto** in Sbobinator **non è accettabile in produzione** nell
 | 28/06 | Scelta LLM locale (Qwen), CPU, gate 16 GB |
 | 28/06 | Analisi token in input, map-reduce, KV cache |
 | 28/06 | **Espansione:** scelta provider multipli (locale + 5 API cloud); design UI |
+| 28–30/06 | **Implementazione** Fase 2–5 (backend, UI, provider, Docker) |
+| 30/06 | Deploy mini PC 32 GB; Qwen OK; test 3 campioni → qualità locale insufficiente |
+| 30/06 | BUG-UI-021 / BUG-SUM-021 checkbox `summary_requested` — fix in repo |
+| 30/06 | Utente: prodotto generico (no glossario wiki); locale deve reggere 3 h parlato |
 
 ---
 
-## 3. Stato attuale del codice (da sostituire)
+## 3. Stato attuale del codice (post-implementazione v0.3.x)
 
-| Componente | Stato | Destino |
-|------------|-------|---------|
-| `extractive` (LexRank) | Non è un riassunto | Rimuovere dall’etichetta «riassunto» o eliminare |
-| `abstractive` (IT5 news) | Qualità inaccettabile | **Rimuovere** |
-| `summarize.py` | Monolitico, 2 modalità | Refactor → **provider abstraction** |
-| UI sidebar | «Sintesi / Riassunto IT5» | **Selettore provider** + lunghezza + opt-in |
+| Componente | Stato | Note |
+|------------|-------|------|
+| `extractive` (LexRank) | ✅ Rimosso dal path riassunto | — |
+| `abstractive` (IT5 news) | ✅ Rimosso | Sostituito da LLM |
+| `summarize.py` | ✅ Orchestratore map-reduce | Soglia locale da rivedere (BUG-SUM-025) |
+| `summarize_providers/*` | ✅ 6 provider | local, openai, gemini, claude, deepseek, kimi |
+| UI FastAPI | ✅ In produzione | `/settings/summary`, select provider, checkbox |
+| `prompt.py` | 🔧 Da rafforzare | Meta-frasi, anti-allucinazione (BUG-SUM-023/024) |
 
-Benchmark di riferimento: `docs/summary-benchmark/runs/20260628_130950/`
+Benchmark: `docs/summary-benchmark/runs/20260628_130950/`  
+Test produzione locale: `data/output/20260630_110652_*` (mini PC, review 30/06).
 
-**Criteri qualità (invariati):** chi/cosa/contesto, punti principali, autosufficiente, niente invenzioni, niente ribaltamento del senso. Vedi §4 in storico benchmark nel repo.
+**Criteri qualità (invariati):** chi/cosa/contesto, punti principali, autosufficiente, niente invenzioni, niente ribaltamento del senso. **Non ancora raggiunti** con Qwen 3B single-pass sui campioni testati.
 
 ---
 
@@ -101,7 +118,7 @@ Benchmark di riferimento: `docs/summary-benchmark/runs/20260628_130950/`
 4. Gestione errori (API, timeout, OOM locale) → `summary_error` su job
 5. **Mai** loggare API key o testo completo in log di produzione
 
-### 4.2 Modulo file proposti (implementazione futura)
+### 4.2 Moduli file (implementati ✅)
 
 | Path | Ruolo |
 |------|--------|
@@ -117,21 +134,19 @@ Benchmark di riferimento: `docs/summary-benchmark/runs/20260628_130950/`
 | `scripts/download_summary_llm.py` | Download GGUF Qwen in `models/` |
 | `scripts/summary_benchmark.py` | Esteso: `--provider local|openai|...` |
 
-### 4.3 Modello job (campi da aggiungere)
+### 4.3 Modello job (campi — implementati ✅)
 
-Oggi: `summary_mode`, `summary_length`, `summary_requested`, `summary_error`.
+| Campo | Tipo | Esempio | Stato |
+|-------|------|---------|-------|
+| `summary_provider` | string | `local`, `openai`, … | ✅ |
+| `summary_model` | string | `qwen2.5-3b-instruct-q4_k_m.gguf` | ✅ |
+| `summary_length` | string | `auto` / `short` / … | ✅ |
+| `summary_input_tokens` | int | 1803 | ✅ |
+| `summary_strategy` | string | `single` / `map_reduce` | ✅ |
+| `summary_requested` | bool | `true` / `false` | ✅ (fix BUG-SUM-021) |
+| `summary_error` | string | messaggio eccezione | ✅ |
 
-**Proposta:**
-
-| Campo | Tipo | Esempio | Note |
-|-------|------|---------|------|
-| `summary_provider` | string | `local`, `openai`, `claude`, … | Scelto **all’accodamento** |
-| `summary_model` | string | `qwen2.5-3b`, `gpt-4o-mini`, … | Opzionale; default per provider |
-| `summary_length` | string | `auto` / `short` / `normal` / `detailed` | Invariato |
-| `summary_input_tokens` | int | 984 | Per diagnostica |
-| `summary_strategy` | string | `single` / `map_reduce` | Trasparenza |
-
-**Regola:** impostazioni sidebar valgono **solo al momento dell’accodamento** (come oggi). Non modificabili su job già in coda.
+**Regola:** impostazioni sidebar valgono **solo al momento dell'accodamento** (come oggi). Non modificabili su job già in coda.
 
 ### 4.4 Configurazione API key (sicurezza)
 
@@ -438,39 +453,50 @@ python scripts/summary_benchmark.py --all-providers
 
 ### Fase 0 — Documentazione ✅
 
-- Questo file + BUG-SUM-020
+- Questo file + BUG-SUM-020 in TRACCIAMENTO-BUG.md
 
-### Fase 1 — Benchmark
+### Fase 1 — Benchmark 🔧 Parziale
 
-- [ ] Token count sui 4 campioni
-- [ ] Benchmark `local` (Qwen 3B)
-- [ ] Benchmark `openai` + `claude` o `gemini` (almeno 2 cloud)
-- [ ] Utente approva qualità minima
+- [x] Token count sui 4 campioni (in `job.json`: `summary_input_tokens`)
+- [x] Benchmark `local` (Qwen 3B) su mini PC — output in `data/output/20260630_110652_*`
+- [ ] Benchmark sistematico `openai` + `claude` o `gemini` (script esteso `--all-providers`)
+- [ ] Utente approva qualità minima — **non approvata** per locale al 30/06
 
-### Fase 2 — Backend core
+### Fase 2 — Backend core ✅
 
-- [ ] `SummaryProvider` + `local` + **un** cloud (OpenAI)
-- [ ] `summary_config` + secrets file
-- [ ] Job fields `summary_provider`
-- [ ] Pipeline worker integrata
-- [ ] Rimuovere IT5/LexRank da path «riassunto»
+- [x] `SummaryProvider` + `local` + cloud (tutti e 6)
+- [x] `summary_config` + secrets file
+- [x] Job fields `summary_provider`, `summary_strategy`, `summary_input_tokens`
+- [x] Pipeline worker integrata
+- [x] Rimuovere IT5/LexRank da path «riassunto»
 
-### Fase 3 — UI
+### Fase 3 — UI ✅
 
-- [ ] Sidebar motore + lunghezza + checkbox
-- [ ] Pagina impostazioni API
-- [ ] Banner dinamici + stati disabilitati
-- [ ] Dettaglio job con metadato provider
+- [x] Sidebar motore + lunghezza + checkbox
+- [x] Pagina impostazioni API + test connessione
+- [x] Banner dinamici + stati disabilitati
+- [x] Dettaglio job con metadato provider
+- [x] Fix checkbox BUG-UI-021 / BUG-SUM-021 (repo dev)
 
-### Fase 4 — Provider aggiuntivi
+### Fase 4 — Provider aggiuntivi ✅
 
-- [ ] Gemini, Claude, DeepSeek, Kimi (stesso pattern OpenAI-compatible dove possibile)
+- [x] Gemini, Claude, DeepSeek, Kimi
 
-### Fase 5 — Docker / docs
+### Fase 5 — Docker / docs 🔧 Parziale
 
-- [ ] Env vars per cloud in compose
-- [ ] Modello GGUF opzionale in immagine CPU
-- [ ] Documentazione utente «come ottenere API key»
+- [x] Modello GGUF auto-download in Docker CPU (RAM ≥ 16 GB)
+- [x] Porta host 8502 (conflitto 8501)
+- [x] `sbobina docker-ui`, volume `sbobinator-qwen`
+- [ ] Env vars cloud documentate in compose (opzionale utente)
+- [ ] Documentazione utente «come ottenere API key» (README parziale)
+
+### Fase 6 — Qualità locale (NUOVA, P0) 📋 Aperta
+
+- [ ] Prompt anti-meta-frase e anti-allucinazione (`BUG-SUM-023`, `024`)
+- [ ] Map-reduce obbligatorio per `local` sotto soglia attuale (`BUG-SUM-025`)
+- [ ] Merge gerarchico per testi molto lunghi (`BUG-SUM-026`)
+- [ ] Test end-to-end **3 ore** parlato su mini PC 32 GB
+- [ ] Valutare modello GGUF più capace se 3B insufficiente
 
 ---
 
@@ -499,7 +525,27 @@ python scripts/summary_benchmark.py --all-providers
 
 > «Token in input — va valutato in modo scientifico.»
 
-> **(28/06)** «Dobbiamo poter far scegliere chi genera il riassunto: LLM locale, OpenAI, Gemini, Claude, DeepSeek, Kimi — così abbiamo più margine di manovra sugli utenti.»
+> **(30/06)** «mi aspettavo che già facessi un riassunto fatto bene — il problema è tuo non mio»
+
+> **(30/06)** «sbobinator è generico, non per wikipedia» (rifiuto glossario dominio)
+
+> **(30/06)** «se c'è un problema sul locale lo devi risolvere — bisogna riuscire a sbobinare anche 3 ore di parlato»
+
+> **(30/06)** «avevo spuntato il riassunto, appena ho avviato i job la spunta è sparita»
+
+---
+
+## 16. Bug qualità aperti (riferimento incrociato)
+
+| ID | Problema | Fix previsto |
+|----|----------|--------------|
+| BUG-SUM-022 | Qualità Qwen insufficiente | Fase 6 completa |
+| BUG-SUM-023 | Meta-frasi | `prompt.py` | 🔧 Fix in repo — da verificare |
+| BUG-SUM-024 | Allucinazioni su ASR rumoroso | Prompt + map-reduce | 🔧 Fix in repo — da verificare |
+| BUG-SUM-025 | Single-pass su testi medi | `use_map_reduce()` locale | ✅ Fix in repo |
+| BUG-SUM-026 | Scala 3 h | Merge gerarchico + chunk 4k | 🔧 Fix in repo — test 3 h mancante |
+
+Dettaglio maniacale: [`TRACCIAMENTO-BUG.md` §9](TRACCIAMENTO-BUG.md#9-bug-sessione-30-giugno-2026--llm-locale-deploy-qualità).
 
 ---
 
@@ -509,11 +555,14 @@ python scripts/summary_benchmark.py --all-providers
 |------|-----------|
 | `bug-fix/TRACCIAMENTO-BUG.md` | BUG-SUM-020 |
 | `bug-fix/FIX-RIASSUNTO-LLM.md` | Questo documento |
-| `src/sbobinator/ui/server.py` | UI attuale (da estendere) |
-| `src/sbobinator/ui/templates/index.html` | Sidebar + upload |
+| `src/sbobinator/summarize_providers/prompt.py` | Prompt (da rafforzare) |
+| `src/sbobinator/http_ssl.py` | SSL cloud Windows |
+| `src/sbobinator/local_llm_download.py` | Auto-download Qwen Docker |
+| `data/output/20260630_110652_*` | Test qualità locale 30/06 |
+| `bug-fix/TRACCIAMENTO-BUG.md` | Tutti i BUG-SUM/UI/ENV |
 | `docs/summary-benchmark/` | Benchmark qualità |
 | `scripts/summary_benchmark.py` | Script offline |
 
 ---
 
-*Ultimo aggiornamento: 2026-06-28 — multi-provider + design UI; implementazione non avviata.*
+*Ultimo aggiornamento: 2026-06-30 — implementazione v0.3.x completata; Fase 6 qualità locale aperta (BUG-SUM-022…026).*

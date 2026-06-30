@@ -200,6 +200,7 @@ async def index(
     request: Request,
     job: str = "",
     provider: str = "",
+    summary: str = "",
     flash: str = "",
     flash_type: str = "success",
 ) -> HTMLResponse:
@@ -222,6 +223,7 @@ async def index(
         "default_model": DEFAULT_MODEL,
         "flash": flash,
         "flash_type": flash_type,
+        "summary_checked": summary.strip().lower() in ("1", "true", "yes", "on"),
         "status_queued": STATUS_QUEUED,
         "status_running": STATUS_RUNNING,
         "status_completed": STATUS_COMPLETED,
@@ -430,10 +432,18 @@ async def enqueue_files(
             if len(enqueued) > 1
             else "1 file accodato"
         )
+        if summary_on:
+            msg += f" · con riassunto ({provider_label(provider_id)})"
+        else:
+            msg += " · solo trascrizione"
         if skipped:
             msg += f" · saltati: {', '.join(skipped)}"
+        summary_q = "summary=1" if summary_on else "summary=0"
         return RedirectResponse(
-            url=f"/?job={last}&provider={provider_id}&flash={quote(msg)}&flash_type=success",
+            url=(
+                f"/?job={last}&provider={provider_id}&{summary_q}"
+                f"&flash={quote(msg)}&flash_type=success"
+            ),
             status_code=303,
         )
 

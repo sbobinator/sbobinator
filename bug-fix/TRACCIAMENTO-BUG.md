@@ -1,7 +1,49 @@
 # Tracciamento bug — Sbobinator
 
-Documento aggiornato al **28 giugno 2026** (v0.3.0).  
-Elenco sistematico dei bug rilevati durante sviluppo e test su Windows, con causa, impatto, stato e fix.
+Documento aggiornato al **30 giugno 2026** (v0.3.x).  
+Elenco sistematico dei bug rilevati durante sviluppo e test su Windows / Docker (mini PC 32 GB), con causa, impatto, stato e fix.
+
+---
+
+## Registro rapido (tutti gli ID)
+
+| ID | Titolo | Stato |
+|----|--------|-------|
+| BUG-UI-001 | Messaggio riassunto fuorviante | ✅ Risolto |
+| BUG-DATA-002 | Perdita lavori / nessuno storico | ✅ Risolto |
+| BUG-UI-003 | Risultati non mostrati post-trascrizione | ✅ Risolto |
+| BUG-IMPORT-004 | `SummaryLength` ImportError | ✅ Risolto |
+| BUG-DEPS-005 | NeMo non installato | ✅ Risolto |
+| BUG-UX-006 | Slider frasi rigido | ✅ Risolto |
+| BUG-UX-007 | Feedback caricamento modello scarso | 🔧 Parziale |
+| BUG-UX-008 | `st.rerun()` perde contesto upload | ✅ Risolto |
+| BUG-ENV-001 | SSL HuggingFace Windows | 🔧 Parziale |
+| BUG-PATH-002 | Modello locale path relativo | ✅ Risolto |
+| BUG-WIN-009 | `curl` download interrotto | 🔧 Parziale |
+| BUG-WIN-010 | Più interpreti Python | ℹ️ Documentare |
+| BUG-WIN-011 | mT5 download SSL | ✅ Risolto (mT5 rimosso) |
+| BUG-ARCH-012 | CLI overwrite per stem | 📋 Aperto |
+| BUG-ARCH-013 | Nessuna coda elaborazione | ✅ Risolto |
+| BUG-ARCH-014 | Modello ASR in RAM tra job | ℹ️ By design |
+| BUG-ARCH-015 | File legacy fuori storico | 📋 Aperto |
+| BUG-QUEUE-016 | Stesso job ripetuto in coda UI | ✅ Risolto |
+| BUG-UI-017 | File restano in uploader | ✅ Risolto |
+| BUG-ENV-018 | ImportError `data_dir` processo stale | ✅ Risolto |
+| BUG-UI-019 | Pulsante Annulla non risponde | ✅ Risolto |
+| BUG-SUM-019 | mT5 output inutilizzabile | ✅ Risolto |
+| BUG-SUM-020 | Qualità riassunto insufficiente (IT5/LexRank) | 🔧 Parziale |
+| BUG-ARCH-020 | Streamlit inadatto → migrazione FastAPI | ✅ Risolto |
+| BUG-ENV-021 | SSL API cloud (DeepSeek/OpenAI) Windows | ✅ Risolto |
+| BUG-DOCKER-022 | Porta 8501 occupata su mini PC | ✅ Risolto |
+| BUG-DOCKER-023 | Qwen GGUF non scaricato in Docker | ✅ Risolto |
+| BUG-UI-021 | Checkbox riassunto scompare dopo accoda | ✅ Risolto (repo) |
+| BUG-SUM-021 | `summary_requested: false` con checkbox ON | ✅ Risolto (repo) |
+| BUG-SUM-022 | Qualità riassunto Qwen locale insufficiente | 📋 Aperto |
+| BUG-SUM-023 | Meta-frasi nei riassunti («In questa trascrizione…») | 📋 Aperto |
+| BUG-SUM-024 | Allucinazioni su errori ASR | 📋 Aperto |
+| BUG-SUM-025 | Map-reduce non usato su testi medi (locale) | 📋 Aperto |
+| BUG-SUM-026 | Scalabilità riassunto locale su 3 h parlato | 📋 Aperto |
+| BUG-PIPE-027 | Riassunto fallito ma job `completed` | 🔧 Parziale |
 
 ---
 
@@ -27,6 +69,7 @@ Elenco sistematico dei bug rilevati durante sviluppo e test su Windows, con caus
 6. [Bug architettura / dati](#6-bug-architettura--dati)
 7. [Rischi residui e backlog](#7-rischi-residui-e-backlog)
 8. [Come testare le fix](#8-come-testare-le-fix)
+9. [Bug sessione 30 giugno 2026 — LLM locale, deploy, qualità](#9-bug-sessione-30-giugno-2026--llm-locale-deploy-qualità)
 
 ---
 
@@ -262,9 +305,10 @@ Dopo accodamento riuscito, l'area upload si svuota (come documentato in BUG-UX-0
 
 | Campo | Dettaglio |
 |-------|-----------|
-| **Stato** | 🔍 In analisi — benchmark offline creato, fix non ancora definito |
+| **Stato** | 🔧 Parziale — **infrastruttura** LLM multi-provider ✅ (v0.3.x); **qualità output** ancora 📋 (vedi BUG-SUM-022…026) |
 | **Severità** | **Critica (qualità prodotto)** |
 | **Segnalazione** | 28/06 — utente: riassunti «non soddisfacenti»; 5 righe su testo da 600 parole che non spiegano il contenuto; rischio rimozione feature se non migliora |
+| **Aggiornamento 30/06** | Utente: *«mi aspettavo che già facessi un riassunto fatto bene — il problema è tuo non mio»*; test Qwen locale su 3 campioni confermano gap qualità |
 
 **Sintomi osservati:**
 
@@ -296,14 +340,20 @@ Output: `docs/summary-benchmark/runs/<timestamp>/` — confronto di tutte le com
 - Copertura dei concetti principali leggibile da un umano senza leggere la trascrizione intera.
 - Nessuna deformazione grave del significato.
 
-**Possibili direzioni (non implementate — solo backlog):**
+**Fix infrastruttura applicato (28–30/06, v0.3.x):**
 
-- Modello IT5/wiki o mBART/LED per testi lunghi e parlato.
-- Parametri lunghezza più aggressivi su `detailed` / `auto`.
-- Riassunto gerarchico (map-reduce) con prompt dedicati al parlato.
-- Valutare se mantenere solo sintesi estrattiva + rimuovere IT5 se benchmark fallisce.
+| Componente | Stato |
+|------------|-------|
+| `summarize_providers/` (local, openai, gemini, claude, deepseek, kimi) | ✅ Implementato |
+| `summary_config.py` + pagina `/settings/summary` | ✅ Implementato |
+| Campi job `summary_provider`, `summary_strategy`, `summary_input_tokens` | ✅ Implementato |
+| IT5 / LexRank come path «riassunto» | ✅ Rimossi |
+| Qwen GGUF locale + download Docker | ✅ Implementato |
+| `http_ssl.py` + `truststore` per API cloud Windows | ✅ Implementato |
 
-**→ Roadmap completa LLM locale:** vedi [`FIX-RIASSUNTO-LLM.md`](FIX-RIASSUNTO-LLM.md) (decisione 28/06/2026: sostituire approccio con Qwen CPU, gate 16 GB, analisi token).
+**Qualità ancora insufficiente (30/06):** vedi sezione [9](#9-bug-sessione-30-giugno-2026--llm-locale-deploy-qualità) — BUG-SUM-022…026.
+
+**→ Roadmap e decisioni:** [`FIX-RIASSUNTO-LLM.md`](FIX-RIASSUNTO-LLM.md) (aggiornato 30/06: implementazione core completata, qualità locale da chiudere).
 
 ---
 
@@ -407,7 +457,8 @@ Python su Windows non valida correttamente i certificati SSL (antivirus, proxy, 
 - `config.local_model_path()` risolve path assoluto da root progetto
 
 **Residuo:**  
-Download automatico da Python/HuggingFace ancora fallisce. mT5 per riassunto "Qualità" può avere lo stesso problema.
+Download automatico da Python/HuggingFace del modello **ASR** Parakeet ancora può fallire.  
+**Aggiornamento 30/06:** API cloud (OpenAI, DeepSeek, Gemini, …) mitigate con `truststore` in `http_ssl.py` (BUG-ENV-021 ✅). mT5/IT5 non più in uso.
 
 ---
 
@@ -539,12 +590,14 @@ Connessione reset durante download 2.4 GB.
 
 ### BUG-WIN-011 — Riassunto mT5 richiede download HuggingFace
 
-| Stato | 📋 Aperto |
+| Campo | Dettaglio |
 |-------|-----------|
+| **Stato** | ✅ Risolto (v0.3.x) — mT5/IT5 **rimossi**; sostituiti da LLM multi-provider |
+| **Severità** | Alta (storico) |
 
-Modalità "Qualità (mT5)" può fallire con stesso errore SSL.  
-**Workaround:** usare "Veloce (estrativo)".  
-**Backlog:** bundle mT5 locale o script download analogo a Parakeet.
+**Storico:** modalità «Qualità (mT5)» falliva con SSL Windows.  
+**Oggi:** riassunto via Qwen locale o API cloud; download GGUF con `scripts/download_summary_llm.py` / auto-download Docker (`local_llm_download.py`).  
+**Residuo SSL HuggingFace:** solo per modello ASR Parakeet se non in cache locale (vedi BUG-ENV-001).
 
 ---
 
@@ -594,12 +647,14 @@ Trascrizioni pre-fix (flat in `data/output/`) non in `index.json`.
 
 | ID | Task |
 |----|------|
-| P0 | **BUG-SUM-020** — Riassunto LLM locale (vedi [`FIX-RIASSUNTO-LLM.md`](FIX-RIASSUNTO-LLM.md)) |
+| **P0** | **BUG-SUM-022…026** — Qualità riassunto locale: prompt, map-reduce obbligatorio, merge gerarchico, scala 3 h |
+| P1 | Deploy fix BUG-UI-021 / BUG-SUM-021 su mini PC (rebuild Docker) |
 | P1 | Allineare CLI al registro `jobs/` |
 | P2 | Script migrazione output legacy |
 | P2 | Messaggio progress più dettagliato (fase + tempo) |
+| P2 | BUG-PIPE-027 — UX errore riassunto vs job completato |
 
-### Risolti con migrazione UI (v0.3.x)
+### Risolti con migrazione UI e LLM (v0.3.x)
 
 | ID | Bug |
 |----|-----|
@@ -609,6 +664,12 @@ Trascrizioni pre-fix (flat in `data/output/`) non in `index.json`.
 | ✅ | BUG-UI-019 — Annulla non risponde |
 | ✅ | BUG-ENV-018 — ImportError processo stale |
 | ✅ | BUG-UX-008 — Rerun e contesto upload |
+| ✅ | BUG-SUM-019 — mT5 sostituito |
+| ✅ | BUG-WIN-011 — mT5/IT5 rimossi |
+| ✅ | BUG-ENV-021 — SSL API cloud (truststore) |
+| ✅ | BUG-DOCKER-022 — Porta 8502 |
+| ✅ | BUG-DOCKER-023 — Auto-download Qwen Docker |
+| ✅ | BUG-UI-021 / BUG-SUM-021 — Checkbox riassunto (fix in repo) |
 
 ### Priorità media
 
@@ -624,6 +685,270 @@ Trascrizioni pre-fix (flat in `data/output/`) non in `index.json`.
 | P4 | Watch folder automatico |
 | P4 | API REST con stesso backend jobs |
 | P4 | Diarizzazione (chi parla) |
+
+---
+
+## 9. Bug sessione 30 giugno 2026 — LLM locale, deploy, qualità
+
+> **Contesto:** deploy Docker su mini PC AMD (32 GB RAM, WSL 24 GB), UI `http://localhost:8502`, Qwen scaricato all'avvio container.  
+> **Test utente:** 3 campioni benchmark (`medio`, `lungo`, `molto-lungo`) con riassunto locale; output copiati in `data/output/20260630_110652_*`.
+
+---
+
+### BUG-ENV-021 — SSL API cloud su Windows (`Connection error` DeepSeek)
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | ✅ Risolto (v0.3.x) |
+| **Severità** | Alta (bloccante cloud) |
+| **Segnalazione** | 28–29/06 — test API DeepSeek da UI impostazioni: errore connessione / SSL |
+
+**Causa root:**  
+Python 3.12+ su Windows non usa sempre il trust store OS per HTTPS; client OpenAI-compatible fallisce handshake verso API cloud.
+
+**Fix applicato:**
+
+- Modulo `src/sbobinator/http_ssl.py` — `truststore.inject_into_ssl()` se pacchetto installato
+- Chiamato all'avvio UI / provider cloud
+- Dipendenza `truststore` in extra `summarize`
+
+**File:** `http_ssl.py`, `summarize_providers/openai_compat.py`, `pyproject.toml`
+
+**Verifica:** pulsante «Test connessione» in `/settings/summary` per DeepSeek/OpenAI.
+
+---
+
+### BUG-DOCKER-022 — Porta 8501 già occupata sul mini PC
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | ✅ Risolto |
+| **Severità** | Alta (deploy) |
+| **Segnalazione** | Container Sbobinator non raggiungibile; porta 8501 usata da `dataunchain-dashboard` |
+
+**Fix applicato:**  
+`docker/docker-compose.yml` — mapping **`8502:8501`** (host:container).
+
+**Nota deploy:** URL utente = `http://localhost:8502`.
+
+---
+
+### BUG-DOCKER-023 — Modello Qwen non presente al primo avvio Docker
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | ✅ Risolto |
+| **Severità** | Alta (riassunto locale) |
+| **Segnalazione** | Riassunto locale non disponibile finché non scaricato manualmente GGUF |
+
+**Fix applicato:**
+
+- `src/sbobinator/local_llm_download.py` — download automatico se RAM ≥ 16 GB
+- Volume Docker `sbobinator-qwen` per persistenza
+- Comando `sbobina docker-ui` all'avvio container
+- Script `scripts/ensure_local_summary_llm.py`
+
+**Verifica mini PC (30/06):** log container «Qwen scaricato con successo» all'avvio.
+
+---
+
+### BUG-UI-021 — Checkbox «Genera riassunto» scompare dopo accodamento
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | ✅ Risolto in **repo dev** — ⚠️ non ancora deployato su mini PC al momento del test utente |
+| **Severità** | Alta (UX / fiducia) |
+| **Segnalazione** | 30/06 — *«avevo spuntato il riassunto, appena ho avviato i job la spunta è sparita»* |
+
+**Causa root:**
+
+1. Dopo `POST /enqueue` la pagina fa **redirect 303** → reload completo
+2. Checkbox in `index.html` **senza** attributo `checked` persistente
+3. L'utente interpreta la spunta persa come «riassunto disattivato» anche quando i job erano già accodati
+
+**Comportamento collaterale fuorviante:**  
+URL post-redirect include sempre `provider=local` dal select (anche se riassunto off) → ulteriore confusione.
+
+**Fix applicato (repo):**
+
+| Modifica | File |
+|----------|------|
+| Query `summary=1` / `summary=0` nel redirect | `server.py` |
+| Checkbox ripristinata da `summary_checked` | `index.html` |
+| Flash: «con riassunto (LLM locale)» vs «solo trascrizione» | `server.py` |
+| Hint «Riassunto attivo per il prossimo accodamento» | `index.html` (JS) |
+
+**Deploy:** rebuild Docker sul mini PC per attivare il fix.
+
+---
+
+### BUG-SUM-021 — `summary_requested: false` nonostante checkbox apparentemente ON
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | ✅ Risolto in **repo dev** (stesso fix di BUG-UI-021) |
+| **Severità** | **Critica** (feature non eseguita) |
+| **Segnalazione** | 30/06 — 3 job completati **senza** `riassunto.txt`; log senza «Generazione riassunto» |
+
+**Evidenza tecnica (mini PC, job falliti):**
+
+```json
+"summary_requested": false,
+"has_summary": false,
+"summary_error": "",
+"summary_provider": ""
+```
+
+**Causa root:**  
+Checkbox fuori dal `<form id="enqueue-form">`, collegata solo con attributo HTML `form="enqueue-form"`. In alcuni submit il valore `summary_enabled=true` **non arriva** al server → `summary_on = False` in `server.py` riga 377.
+
+**Fix applicato (repo):**
+
+- Checkbox **senza** `name` (solo `id="summary-enabled-cb"`)
+- `<input type="hidden" name="summary_enabled">` **dentro** il form
+- JS `syncSummaryField()` su change + submit del form
+
+**File:** `templates/index.html`, `server.py` (`enqueue_files`)
+
+**Nota:** al secondo tentativo utente (senza fix deployato) i riassunti **sono** partiti — bug **intermittente**, coerente con race/submit browser.
+
+**Verifica post-fix:**
+
+```powershell
+docker exec docker-sbobinator-cpu-1 sh -c "grep summary_requested /data/output/jobs/*/job.json"
+# Atteso: "summary_requested": true
+```
+
+---
+
+### BUG-SUM-022 — Qualità riassunto Qwen locale insufficiente per uso produzione
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | 📋 Aperto |
+| **Severità** | **Critica (qualità prodotto)** |
+| **Segnalazione** | 30/06 — *«mi aspettavo un riassunto fatto bene — il problema è tuo non mio»* |
+
+**Evidenza (job `20260630_110652_*`, provider `local`, modello `qwen2.5-3b-instruct-q4_k_m.gguf`):**
+
+| Campione | Trascrizione | Riassunto | Voto sintetico |
+|----------|--------------|-----------|----------------|
+| medio | 1759 char, ASR ok | Meta-frasi + **allucinazioni** (oche «vestite e trottillate», Orazi/Curiatii confusi) | 4/10 |
+| lungo | 4075 char, troncato | Ripetitivo, messaggio Wikimedia deformato | 6/10 |
+| molto-lungo | 8189 char | Migliore; cattura aneddoti; perde citazioni chiave | 7/10 |
+
+Tutti i job: `summary_strategy: "single"`, `summary_length: "auto"`.
+
+**Causa root (prodotto, non utente):**
+
+1. Prompt in `prompt.py` non vieta esplicitamente meta-frasi
+2. Qwen 3B Q4 in single-pass su testo denso → ripetizioni e invenzioni
+3. Soglia map-reduce locale troppo alta (6000 token) — testi ~8k char restano in `single`
+4. Nessun merge gerarchico per testi molto lunghi (ore di parlato)
+
+**Fix pianificato:** BUG-SUM-023, 024, 025, 026.
+
+**File coinvolti:** `summarize_providers/prompt.py`, `summarize.py`, `summarize_providers/local_qwen.py`
+
+---
+
+### BUG-SUM-023 — Meta-frasi nei riassunti
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | 📋 Aperto |
+| **Severità** | Media |
+| **Parent** | BUG-SUM-022 |
+
+**Sintomo osservato:**
+
+- *«In questa trascrizione, Alberto Cavaliere presenta…»*
+- *«Erika è una persona con una lunga esperienza…»* (identico su lungo e molto-lungo)
+
+**Causa:** `SYSTEM_PROMPT` non proibisce riferimenti al testo/trascrizione come soggetto del riassunto.
+
+**Fix proposto:** regole esplicite in `prompt.py` — iniziare direttamente dal contenuto; vietare «In questa trascrizione», «Il testo parla di», «L'autore spiega».
+
+---
+
+### BUG-SUM-024 — Allucinazioni su errori ASR
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | 📋 Aperto |
+| **Severità** | Alta |
+| **Parent** | BUG-SUM-022 |
+
+**Sintomo (campione medio):**  
+ASR: «Gli orazzi e i curiazzi» → riassunto inventa «oche e i curiazzi, primi soldati romani» e «vestite e trottillate».
+
+**Causa:** modello 3B colma buchi del trascritto invece di omettere o restare fedele; prompt «NON inventare» insufficiente su input rumoroso.
+
+**Fix proposto:** prompt più rigido; map-reduce; valutare modello locale più capace — **non** glossario dominio-specifico (prodotto generico).
+
+---
+
+### BUG-SUM-025 — Map-reduce non attivato su testi medi (provider locale)
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | 📋 Aperto |
+| **Severità** | Alta |
+| **Parent** | BUG-SUM-022 |
+
+**Sintomo:** `molto-lungo` (1803 token stimati) → `summary_strategy: "single"`; qualità incompleta.
+
+**Causa:** `local_qwen.single_pass_token_limit() == 6000` (`local_qwen.py` ~94). Map-reduce scatta solo sopra soglia.
+
+**Comportamento atteso (utente):** riassunto **buono** anche su monologhi di decine di minuti, senza intervento manuale.
+
+**Fix proposto:**
+
+- Per provider `local`: map-reduce **obbligatorio** sotto soglia attuale (es. da ~1500 token o ~4000 char)
+- Rispettare `summary_length` scelto dall'utente anche nei chunk (oggi chunk usano sempre `SummaryLength.normal` in `summarize.py` ~121)
+
+---
+
+### BUG-SUM-026 — Scalabilità riassunto locale su ~3 ore di parlato
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | 📋 Aperto |
+| **Severità** | **Critica** (requisito prodotto) |
+| **Segnalazione** | 30/06 — *«bisogna riuscire a sbobinare anche 3 ore di parlato»* (trascrizione + riassunto locale) |
+
+**Stato attuale:**
+
+| Fase | 3 h parlato | Stato |
+|------|-------------|-------|
+| Trascrizione ASR | Chunk audio 30 s sopra 30 min (`transcribe.py`) | ✅ Esiste |
+| Riassunto locale | ~25k+ parole → map-reduce teorico sopra 6000 token | 🔧 Non validato; merge piatto fragile |
+
+**Gap:**
+
+1. Nessun test end-to-end 3 h con Qwen su hardware target
+2. Merge di 15+ riassunti parziali in un solo passaggio 3B può degradare qualità / OOM
+3. Progress UI non mostra «segmento N/M» in modo prominente per attese lunghe
+4. Tempo wall-clock può essere **decine di minuti** — deve completare senza timeout silenzioso
+
+**Fix proposto:** map-reduce **gerarchico** (albero di merge), soglie per `local`, test di carico 3 h su mini PC 32 GB.
+
+---
+
+### BUG-PIPE-027 — Riassunto fallito ma job marcato `completed`
+
+| Campo | Dettaglio |
+|-------|-----------|
+| **Stato** | 🔧 Parziale |
+| **Severità** | Media (UX) |
+
+**Comportamento:** in `pipeline.py`, eccezione durante `summarize()` → `summary_error` valorizzato, `has_summary: false`, ma `job.status = STATUS_COMPLETED`.
+
+**Impatto:** utente vede «Completato!» verde anche se il riassunto richiesto è mancante (a meno di leggere il dettaglio job).
+
+**Mitigazione attuale:** `job_detail.html` distingue errori riassunto (BUG-UI-001 ✅).
+
+**Backlog:** stato `completed_with_warnings` o flash più esplicito in coda («trascrizione OK, riassunto fallito»).
 
 ---
 
@@ -646,9 +971,34 @@ Trascrizioni pre-fix (flat in `data/output/`) non in `index.json`.
 
 ### Test BUG-UI-001 (messaggio riassunto)
 
-1. Attiva riassunto, modalità **estrativo** → tab Riassunto con testo
-2. Attiva riassunto, modalità **mT5** su Windows con SSL rotto → messaggio errore, **non** "attivalo nella sidebar"
-3. Disattiva riassunto → messaggio "disattivato per questo lavoro"
+1. Attiva riassunto, provider **locale** o **cloud** → tab Riassunto con testo
+2. Provider cloud senza API key → redirect impostazioni con messaggio chiaro
+3. Disattiva riassunto → messaggio «disattivato per questo lavoro»
+4. Riassunto fallito → warning con `summary_error`, non «attivalo nella sidebar»
+
+### Test BUG-UI-021 / BUG-SUM-021 (checkbox riassunto)
+
+1. Spunta **Genera riassunto** + LLM locale, accoda 1 file
+2. Dopo redirect: checkbox **ancora spuntata**; flash contiene «con riassunto»
+3. Subito: `grep summary_requested` su `job.json` → `true`
+4. Al termine: esiste `riassunto.txt`
+
+### Test BUG-SUM-022 (qualità riassunto locale)
+
+1. Campioni in `data/output/20260630_110652_*` o benchmark in `docs/summary-benchmark/`
+2. Verificare assenza meta-frasi iniziali e allucinazioni gravi su nomi propri
+3. `job.json` → `summary_strategy` appropriata per lunghezza testo
+
+### Test BUG-ENV-021 (SSL cloud)
+
+1. `/settings/summary` → inserisci API key DeepSeek → **Test connessione**
+2. Atteso: successo (non `Connection error`)
+
+### Test BUG-DOCKER-022 / 023 (deploy)
+
+1. `docker compose --profile cpu up` → UI su porta **8502**
+2. Primo avvio RAM ≥ 16 GB → Qwen scaricato in volume `sbobinator-qwen`
+3. Job con riassunto locale completa senza errore `summary_error`
 
 ### Test BUG-PATH-002 + ENV-001 (modello locale)
 
@@ -671,6 +1021,8 @@ sbobina transcribe data/input/campione-italiano-breve.wav -o data/output
 
 | Data | Modifica |
 |------|----------|
+| 2026-06-30 | **Fix qualità locale applicati:** prompt anti-meta/allucinazione; map-reduce obbligatorio Qwen (`use_map_reduce`); chunk 4k; merge gerarchico (`map_reduce_hierarchical`) |
+| 2026-06-30 | Sezione 9: BUG-ENV-021, DOCKER-022/023, UI-021, SUM-021…027; registro rapido; BUG-SUM-020/WIN-011 aggiornati; test qualità Qwen |
 | 2026-06-28 | BUG-ARCH-020, BUG-QUEUE-016, BUG-UI-017, BUG-UI-019, BUG-ENV-018, BUG-UX-008 → ✅ risolti (migrazione FastAPI); FIX-RIASSUNTO-LLM |
 | 2026-06-28 | BUG-QUEUE-016, BUG-UI-017, BUG-ENV-018; verifica DB benchmark; aggiornamento v0.3.0 |
 | 2026-06-26 | Creazione documento; fix BUG-UI-001, BUG-DATA-002; inventario bug sessione |
@@ -688,4 +1040,9 @@ sbobina transcribe data/input/campione-italiano-breve.wav -o data/output
 | Trascrizione | `src/sbobinator/transcribe.py` |
 | Download modello | `scripts/download-model.ps1` |
 | Install locale | `scripts/install-local.ps1` |
-| Output lavori | `data/output/jobs/` |
+| Riassunto LLM | `src/sbobinator/summarize.py`, `summarize_providers/` |
+| Prompt riassunto | `src/sbobinator/summarize_providers/prompt.py` |
+| SSL cloud | `src/sbobinator/http_ssl.py` |
+| Download Qwen | `src/sbobinator/local_llm_download.py` |
+| Docker compose | `docker/docker-compose.yml` |
+| Output lavori | `data/output/jobs/` o `data/output/YYYYMMDD_*` |

@@ -28,7 +28,7 @@
         <h3>Riassunto</h3>
         <a href="/settings/summary" class="btn btn-secondary settings-cta">Motori e API key →</a>
         <label class="checkbox">
-          <input type="checkbox" name="summary_enabled" form="enqueue-form" value="true">
+          <input type="checkbox" id="summary-enabled-cb"{% if summary_checked %} checked{% endif %}>
           Genera riassunto
         </label>
         <label>Motore
@@ -112,6 +112,7 @@
         <h2>Carica file</h2>
         <p class="hint">Le impostazioni della sidebar valgono per questo accodamento.</p>
         <form id="enqueue-form" action="/enqueue" method="post" enctype="multipart/form-data" class="upload-form">
+          <input type="hidden" name="summary_enabled" id="summary-enabled-field" value="" disabled>
           <input type="file" name="files" multiple accept=".mp4,.mkv,.avi,.mov,.webm,.wav,.mp3,.flac,.m4a,.ogg" required>
           <button type="submit" class="btn btn-primary">Accoda sbobinatura</button>
         </form>
@@ -125,6 +126,21 @@
   <script>
     const sel = document.getElementById('summary-provider-select');
     const hint = document.getElementById('provider-hint');
+    const summaryCb = document.getElementById('summary-enabled-cb');
+    const summaryField = document.getElementById('summary-enabled-field');
+    const enqueueForm = document.getElementById('enqueue-form');
+
+    function syncSummaryField() {
+      if (!summaryCb || !summaryField) return;
+      if (summaryCb.checked) {
+        summaryField.disabled = false;
+        summaryField.value = 'true';
+      } else {
+        summaryField.disabled = true;
+        summaryField.value = '';
+      }
+    }
+
     function updateProviderHint() {
       if (!sel || !hint) return;
       const opt = sel.options[sel.selectedIndex];
@@ -132,9 +148,19 @@
       if (opt.dataset.available === 'false') {
         const reason = opt.dataset.reason || 'da configurare';
         hint.innerHTML = '⚠ ' + reason + ' — <a href="/settings/summary?highlight=' + opt.value + '">Configura ora</a>';
+      } else if (summaryCb && summaryCb.checked) {
+        hint.textContent = 'Riassunto attivo per il prossimo accodamento';
       } else {
         hint.textContent = '';
       }
+    }
+
+    if (summaryCb) {
+      summaryCb.addEventListener('change', () => { syncSummaryField(); updateProviderHint(); });
+      syncSummaryField();
+    }
+    if (enqueueForm) {
+      enqueueForm.addEventListener('submit', syncSummaryField);
     }
     if (sel) { sel.addEventListener('change', updateProviderHint); updateProviderHint(); }
   </script>

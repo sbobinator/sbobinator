@@ -12,6 +12,8 @@ from sbobinator.summarize_providers.registry import get_provider, provider_label
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_MERGE_BATCH = 6
+
 
 def _split_chunks(text: str, max_chars: int) -> list[str]:
     text = text.strip()
@@ -51,6 +53,137 @@ def _resolve_provider_id(provider_id: str | None) -> str:
     return fallback
 
 
+def _should_map_reduce(impl: object, tokens: int, chars: int) -> bool:
+    custom = getattr(impl, "use_map_reduce", None)
+    if callable(custom):
+        return bool(custom(tokens, chars))
+    threshold = impl.single_pass_token_limit()  # type: ignore[attr-defined]
+    return tokens > threshold
+
+
+def _chunk_length(length: SummaryLength) -> SummaryLength:
+    if length == SummaryLength.auto:
+        return SummaryLength.normal
+    return length
+
+
+def _merge_batch_size(impl: object) -> int:
+    return int(getattr(impl, "merge_batch_size", lambda: _DEFAULT_MERGE_BATCH)())
+
+
+def _complete(
+    impl: object,
+    user: str,
+    *,
+    model: str | None,
+    on_progress: ProgressCallback | None,
+) -> str:
+    return impl.complete(  # type: ignore[attr-defined]
+        SYSTEM_PROMPT,
+        user,
+        model=model,
+        on_progress=on_progress,
+    )
+
+
+def _hierarchical_merge(
+    partials: list[str],
+    impl: object,
+    length: SummaryLength,
+    used_model: str | None,
+    on_progress: ProgressCallback | None,
+) -> tuple[str, str]:
+    """Unisce riassunti parziali a livelli (evita merge unico su decine di segmenti)."""
+    batch_size = _merge_batch_size(impl)
+    current = [p.strip() for p in partials if p.strip()]
+    strategy = "map_reduce"
+    level = 0
+
+    while len(current) > 1:
+        level += 1
+        if len(current) > batch_size:
+            strategy = "map_reduce_hierarchical"
+        next_level: list[str] = []
+        batches = [current[i : i + batch_size] for i in range(0, len(current), batch_size)]
+
+        for bi, batch in enumerate(batches):
+            if on_progress:
+                on_progress(
+                    "summarize",
+                    97.5,
+                    f"Unione livello {level}: gruppo {bi + 1}/{len(batches)}...",
+                )
+            if len(batch) == 1:
+                next_level.append(batch[0])
+                continue
+            merged_input = merge_prompt("\n\n".join(batch), length)
+            next_level.append(
+                _complete(impl, merged_input, model=used_model, on_progress=on_progress)
+            )
+        current = next_level
+
+    return current[0], strategy
+
+
+def _map_reduce_summarize(
+    text: str,
+    *,
+    impl: object,
+    provider_id: str,
+    length: SummaryLength,
+    used_model: str | None,
+    tokens: int,
+    on_progress: ProgressCallback | None,
+) -> SummaryResult:
+    chunk_limit = impl.chunk_char_limit()  # type: ignore[attr-defined]
+    chunks = _split_chunks(text, chunk_limit)
+    chunk_len = _chunk_length(length)
+
+    if on_progress:
+        on_progress(
+            "summarize",
+            90.0,
+            f"Riassunto map-reduce: {len(chunks)} segmenti ({provider_label(provider_id)})...",
+        )
+
+    partials: list[str] = []
+    for i, chunk in enumerate(chunks):
+        if on_progress:
+            pct = 90.0 + (7.0 * (i + 1) / max(len(chunks), 1))
+            on_progress(
+                "summarize",
+                pct,
+                f"Segmento riassunto {i + 1}/{len(chunks)}...",
+            )
+        part = _complete(
+            impl,
+            user_prompt(chunk, chunk_len),
+            model=used_model,
+            on_progress=on_progress,
+        )
+        partials.append(part.strip())
+
+    if len(partials) == 1:
+        final_text = partials[0]
+        strategy = "map_reduce"
+    else:
+        if on_progress:
+            on_progress("summarize", 98.0, "Unione riassunti parziali...")
+        final_text, strategy = _hierarchical_merge(
+            partials, impl, length, used_model, on_progress
+        )
+
+    return SummaryResult(
+        text=final_text.strip(),
+        provider=provider_id,
+        model=used_model or "",
+        source_chars=len(text),
+        input_tokens=tokens,
+        strategy=strategy,
+        summary_sentences=count_sentences(final_text),
+    )
+
+
 def summarize(
     text: str,
     *,
@@ -77,73 +210,35 @@ def summarize(
         raise RuntimeError(reason)
 
     tokens = impl.estimate_tokens(text)
-    threshold = impl.single_pass_token_limit()
+    chars = len(text)
     used_model = model or impl.default_model()
 
-    if tokens <= threshold:
-        if on_progress:
-            on_progress(
-                "summarize",
-                92.0,
-                f"Riassunto ({provider_label(provider_id)})...",
-            )
-        result = impl.summarize(
+    if _should_map_reduce(impl, tokens, chars):
+        return _map_reduce_summarize(
             text,
+            impl=impl,
+            provider_id=provider_id,
             length=length,
-            model=used_model,
+            used_model=used_model,
+            tokens=tokens,
             on_progress=on_progress,
         )
-        result.strategy = "single"
-        result.input_tokens = tokens
-        return result
 
-    # Map-reduce per testi che superano il contesto del provider
-    chunk_limit = impl.chunk_char_limit()
-    chunks = _split_chunks(text, chunk_limit)
     if on_progress:
         on_progress(
             "summarize",
-            90.0,
-            f"Riassunto map-reduce: {len(chunks)} segmenti ({provider_label(provider_id)})...",
+            92.0,
+            f"Riassunto ({provider_label(provider_id)})...",
         )
-
-    partials: list[str] = []
-    for i, chunk in enumerate(chunks):
-        if on_progress:
-            pct = 90.0 + (7.0 * (i + 1) / max(len(chunks), 1))
-            on_progress(
-                "summarize",
-                pct,
-                f"Segmento riassunto {i + 1}/{len(chunks)}...",
-            )
-        part = impl.complete(
-            SYSTEM_PROMPT,
-            user_prompt(chunk, SummaryLength.normal),
-            model=used_model,
-            on_progress=on_progress,
-        )
-        partials.append(part.strip())
-
-    merged_input = merge_prompt("\n\n".join(partials), length)
-    if on_progress:
-        on_progress("summarize", 98.0, "Unione riassunti parziali...")
-
-    final_text = impl.complete(
-        SYSTEM_PROMPT,
-        merged_input,
+    result = impl.summarize(
+        text,
+        length=length,
         model=used_model,
         on_progress=on_progress,
     )
-
-    return SummaryResult(
-        text=final_text.strip(),
-        provider=provider_id,
-        model=used_model,
-        source_chars=len(text),
-        input_tokens=tokens,
-        strategy="map_reduce",
-        summary_sentences=count_sentences(final_text),
-    )
+    result.strategy = "single"
+    result.input_tokens = tokens
+    return result
 
 
 def unload_summary_models() -> None:
