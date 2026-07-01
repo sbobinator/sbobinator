@@ -1,4 +1,6 @@
 @echo off
+REM Copyright (c) 2024-2026 Antonio Trento — https://antoniotrento.net
+REM All rights reserved. Use subject to the terms in the LICENSE file.
 cd /d "%~dp0"
 
 if exist ".venv\Scripts\sbobina.exe" (

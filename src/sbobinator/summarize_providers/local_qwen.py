@@ -1,3 +1,6 @@
+# Copyright (c) 2024-2026 Antonio Trento — https://antoniotrento.net
+# All rights reserved. Use subject to the terms in the LICENSE file.
+
 """Riassunto con LLM locale Qwen2.5 via llama.cpp (GGUF)."""
 
 from __future__ import annotations

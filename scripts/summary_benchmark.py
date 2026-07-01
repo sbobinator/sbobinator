@@ -1,3 +1,6 @@
+# Copyright (c) 2024-2026 Antonio Trento — https://antoniotrento.net
+# All rights reserved. Use subject to the terms in the LICENSE file.
+
 #!/usr/bin/env python3
 """Benchmark riassunti LLM — solo trascrizioni, senza UI né pipeline ASR.
 

@@ -1,4 +1,7 @@
-"""Registro lavori con coda SQLite — storico persistente, nessun overwrite."""
+# Copyright (c) 2024-2026 Antonio Trento — https://antoniotrento.net
+# All rights reserved. Use subject to the terms in the LICENSE file.
+
+"""Job registry with SQLite queue — persistent history, no overwrites."""
 
 from __future__ import annotations
 

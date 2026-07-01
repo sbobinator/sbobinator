@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "sbobinator"
 version = "0.3.0"
-description = "Sbobina audio e video in testo con NVIDIA NeMo (italiano)"
+description = "Transcribe audio and video to text with NVIDIA NeMo (Italian)"
 readme = "README.md"
 requires-python = ">=3.12"
-license = { text = "MIT" }
-authors = [{ name = "Sbobinator" }]
+license = { file = "LICENSE" }
+authors = [{ name = "Antonio Trento" }]
 dependencies = [
     "typer>=0.12",
     "rich>=13.0",

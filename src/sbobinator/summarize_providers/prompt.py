@@ -1,3 +1,6 @@
+# Copyright (c) 2024-2026 Antonio Trento — https://antoniotrento.net
+# All rights reserved. Use subject to the terms in the LICENSE file.
+
 """Prompt unificato per riassunto di trascritti parlati in italiano."""
 
 from __future__ import annotations

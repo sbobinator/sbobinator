@@ -1,3 +1,6 @@
+# Copyright (c) 2024-2026 Antonio Trento — https://antoniotrento.net
+# All rights reserved. Use subject to the terms in the LICENSE file.
+
 """Pipeline di elaborazione per un singolo job."""
 
 from __future__ import annotations

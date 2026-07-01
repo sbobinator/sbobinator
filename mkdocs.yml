@@ -1,31 +1,32 @@
-# MkDocs — documentazione Sbobinator (GitHub Pages)
-# Build locale:  pip install -r docs/requirements.txt && mkdocs serve
-# Deploy GitHub: push su main → workflow .github/workflows/docs.yml
+# MkDocs — Sbobinator documentation (GitHub Pages)
+# Preview:  pip install -r docs/requirements.txt && mkdocs serve
+# Publish:  scripts\publish_docs.bat   (or python scripts/publish_docs.py)
+#           → copies build to ../sbobinator.github.io/docs/ then git push there
 
 site_name: Sbobinator
-site_description: Trascrizione audio/video in italiano con NVIDIA NeMo Parakeet
-site_author: Sbobinator
-site_url: https://sbobinator.github.io/sbobinator/
+site_description: Italian audio/video transcription with NVIDIA NeMo Parakeet
+site_author: Antonio Trento
+site_url: https://sbobinator.github.io/docs/
 repo_url: https://github.com/sbobinator/sbobinator
 repo_name: sbobinator/sbobinator
-edit_uri: edit/main/docs/
+edit_uri: edit/main/docs/en/
 
 theme:
   name: material
-  language: it
+  language: en
   palette:
     - scheme: default
       primary: indigo
       accent: cyan
       toggle:
         icon: material/brightness-7
-        name: Modalità scura
+        name: Switch to dark mode
     - scheme: slate
       primary: indigo
       accent: cyan
       toggle:
         icon: material/brightness-4
-        name: Modalità chiara
+        name: Switch to light mode
   features:
     - navigation.tabs
     - navigation.sections
@@ -37,8 +38,62 @@ theme:
     - toc.follow
 
 plugins:
-  - search:
-      lang: it
+  - i18n:
+      docs_structure: folder
+      fallback_to_default: false
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: it
+          name: Italiano
+          build: true
+          nav_translations:
+            Home: Home
+            Getting started: Per iniziare
+            User guide: Guida utente
+            Architecture: Architettura
+            Deploy: Deploy
+            Operations: Operatività
+            Troubleshooting: Risoluzione problemi
+            Development: Sviluppo
+            Reference: Riferimento
+            Changelog: Changelog
+            Overview: Panoramica
+            Installation: Installazione
+            Quick start: Avvio rapido
+            Models: Modelli
+            Hardware: Risorse hardware
+            Web UI: Interfaccia web
+            CLI: CLI
+            Jobs & queue: Coda e storico
+            Summarization: Riassunto
+            File formats: Formati file
+            Data flow: Flusso dati
+            Worker: Worker
+            Storage: Storage
+            Local Windows: Windows locale
+            Docker: Docker
+            Environment: Variabili ambiente
+            Scripts: Script
+            Benchmark: Benchmark
+            Maintenance: Manutenzione
+            Common issues: Problemi comuni
+            SSL on Windows: SSL Windows
+            Project structure: Struttura progetto
+            Contributing: Contribuire
+            Configuration: Configurazione
+            CLI reference: Riferimento CLI
+            Modules: Moduli
+            Job schema: Schema job
+            FAQ: FAQ
+            Glossary: Glossario
+            Licenses: Licenze
+            Commercial license: Licenza commerciale
+  - search: {}
 
 markdown_extensions:
   - admonition
@@ -54,19 +109,19 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Per iniziare:
+  - Getting started:
       - getting-started/overview.md
       - getting-started/installation.md
       - getting-started/quickstart.md
       - getting-started/models.md
       - getting-started/hardware.md
-  - Guida utente:
+  - User guide:
       - user-guide/web-ui.md
       - user-guide/cli.md
       - user-guide/jobs-queue.md
       - user-guide/summarization.md
       - user-guide/file-formats.md
-  - Architettura:
+  - Architecture:
       - architecture/overview.md
       - architecture/data-flow.md
       - architecture/worker.md
@@ -75,17 +130,17 @@ nav:
       - deployment/local-windows.md
       - deployment/docker.md
       - deployment/environment.md
-  - Operatività:
+  - Operations:
       - operations/scripts.md
       - operations/benchmark.md
       - operations/maintenance.md
-  - Risoluzione problemi:
+  - Troubleshooting:
       - troubleshooting/common-issues.md
       - troubleshooting/ssl-windows.md
-  - Sviluppo:
+  - Development:
       - development/project-structure.md
       - development/contributing.md
-  - Riferimento:
+  - Reference:
       - reference/configuration.md
       - reference/cli-reference.md
       - reference/modules.md
@@ -93,6 +148,7 @@ nav:
       - reference/faq.md
       - reference/glossary.md
       - reference/licenses.md
+      - reference/commercial-license.md
   - Changelog: changelog.md
 
 extra:

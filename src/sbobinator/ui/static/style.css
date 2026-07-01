@@ -337,3 +337,43 @@ details summary { cursor: pointer; font-weight: 600; margin-bottom: 0.5rem; }
 }
 .job-status-panel { margin-bottom: 1rem; }
 .jobs-table tbody tr:hover { background: rgba(99, 102, 241, 0.06); }
+
+.license-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.license-modal {
+  max-width: 520px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+.license-lead { margin: 0.75rem 0; line-height: 1.5; }
+.license-links {
+  margin: 1rem 0;
+  padding-left: 1.2rem;
+}
+.license-links a { color: var(--accent); }
+.license-ack-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+.license-page-section { margin-bottom: 1.25rem; }
+.license-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+.license-table th, .license-table td {
+  border: 1px solid var(--border);
+  padding: 0.5rem 0.65rem;
+  text-align: left;
+}

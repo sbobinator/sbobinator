@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>License — Sbobinator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="layout layout-settings">
+    <aside class="sidebar sidebar-nav">
+      <h2>Sbobinator</h2>
+      {% include "partials/nav.html" %}
+      <footer class="sidebar-footer">
+        <p class="hint">v{{ version }}</p>
+      </footer>
+    </aside>
+
+    <main class="main main-wide">
+      <header class="hero hero-compact">
+        <h1>License / Licenza</h1>
+        <p>Proprietary software © 2024-2026 Antonio Trento</p>
+      </header>
+
+      {% if flash %}
+      <div class="flash flash-{{ flash_type }}">{{ flash }}</div>
+      {% endif %}
+
+      <section class="panel license-page-section">
+        <h2>English</h2>
+        <p>Sbobinator is <strong>proprietary software</strong>. Copyright © Antonio Trento (<a href="{{ commercial_contact_url }}">antoniotrento.net</a>).</p>
+        <table class="license-table">
+          <thead><tr><th>Use</th><th>Terms</th></tr></thead>
+          <tbody>
+            <tr><td>Personal, study, documented non-profit</td><td><strong>Free</strong></td></tr>
+            <tr><td>Companies, public sector, professionals, commercial or internal organizational use</td><td><strong>Paid commercial license</strong></td></tr>
+          </tbody>
+        </table>
+        <p>Redistribution without written permission is not allowed. Third-party models and libraries (NVIDIA NeMo, Qwen, PyTorch, etc.) remain under their own licenses.</p>
+        <p>
+          <a class="btn btn-secondary" href="{{ docs_license_url_en }}" target="_blank" rel="noopener">Full license on GitHub Pages</a>
+          <a class="btn btn-secondary" href="{{ docs_commercial_url_en }}" target="_blank" rel="noopener">Commercial licensing</a>
+          <a class="btn btn-primary" href="{{ commercial_contact_url }}" target="_blank" rel="noopener">Contact for a quote</a>
+        </p>
+      </section>
+
+      <section class="panel license-page-section">
+        <h2>Italiano</h2>
+        <p>Sbobinator è <strong>software proprietario</strong>. Copyright © Antonio Trento (<a href="{{ commercial_contact_url }}">antoniotrento.net</a>).</p>
+        <table class="license-table">
+          <thead><tr><th>Uso</th><th>Condizioni</th></tr></thead>
+          <tbody>
+            <tr><td>Personale, studio, no-profit documentabile</td><td><strong>Gratuito</strong></td></tr>
+            <tr><td>Aziende, PA, professionisti, uso commerciale o organizzativo interno</td><td><strong>Licenza commerciale a pagamento</strong></td></tr>
+          </tbody>
+        </table>
+        <p>Redistribuzione non consentita senza autorizzazione scritta. Modelli e librerie di terze parti restano alle rispettive licenze.</p>
+        <p>
+          <a class="btn btn-secondary" href="{{ docs_license_url_it }}" target="_blank" rel="noopener">Licenza completa (GitHub Pages)</a>
+          <a class="btn btn-secondary" href="{{ docs_commercial_url_it }}" target="_blank" rel="noopener">Licenza commerciale</a>
+          <a class="btn btn-primary" href="{{ commercial_contact_url }}" target="_blank" rel="noopener">Contatto per preventivo</a>
+        </p>
+      </section>
+
+      {% if not license_acknowledged %}
+      <section class="panel">
+        <h3>First run / Primo avvio</h3>
+        <p class="hint">Confirm that you have read and accept the license terms for this installation.</p>
+        <form method="post" action="/api/license/acknowledge">
+          <input type="hidden" name="return_to" value="/settings/license">
+          <button type="submit" class="btn btn-primary">I understand / Ho capito</button>
+        </form>
+      </section>
+      {% else %}
+      <p class="hint flash flash-success">License acknowledged for this installation. / Licenza accettata per questa installazione.</p>
+      {% endif %}
+    </main>
+  </div>
+</body>
+</html>

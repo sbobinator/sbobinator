@@ -1,3 +1,6 @@
+# Copyright (c) 2024-2026 Antonio Trento — https://antoniotrento.net
+# All rights reserved. Use subject to the terms in the LICENSE file.
+
 """Provider LLM per riassunto trascritti."""
 
 from sbobinator.http_ssl import ensure_ssl

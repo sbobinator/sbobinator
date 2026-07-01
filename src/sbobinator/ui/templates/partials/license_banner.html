@@ -1,0 +1,29 @@
+{% if not license_acknowledged %}
+<div class="license-overlay" id="license-overlay" role="dialog" aria-modal="true" aria-labelledby="license-title">
+  <div class="license-modal panel">
+    <h2 id="license-title">License / Licenza software</h2>
+    <p class="license-lead">
+      <strong>EN</strong> — Sbobinator is proprietary software © Antonio Trento.
+      Free for <em>personal and non-commercial</em> use.
+      <strong>Business, government, and professional use requires a paid license.</strong>
+    </p>
+    <p class="license-lead">
+      <strong>IT</strong> — Sbobinator è software proprietario © Antonio Trento.
+      Gratuito per uso <em>personale e non commerciale</em>.
+      <strong>Uso aziendale, PA e professionale richiede licenza a pagamento.</strong>
+    </p>
+    <ul class="license-links">
+      <li><a href="{{ docs_license_url_en }}" target="_blank" rel="noopener">Full license (EN)</a></li>
+      <li><a href="{{ docs_license_url_it }}" target="_blank" rel="noopener">Licenza completa (IT)</a></li>
+      <li><a href="{{ docs_commercial_url_en }}" target="_blank" rel="noopener">Commercial licensing</a></li>
+      <li><a href="{{ commercial_contact_url }}" target="_blank" rel="noopener">antoniotrento.net — contact</a></li>
+    </ul>
+    <p class="hint">By continuing you accept the terms above. / Continuando accetti i termini sopra.</p>
+    <form method="post" action="/api/license/acknowledge" class="license-ack-form">
+      <input type="hidden" name="return_to" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+      <button type="submit" class="btn btn-primary">I understand / Ho capito</button>
+      <a class="btn btn-secondary" href="/settings/license">Read more / Leggi tutto</a>
+    </form>
+  </div>
+</div>
+{% endif %}

@@ -1,3 +1,6 @@
+# Copyright (c) 2024-2026 Antonio Trento — https://antoniotrento.net
+# All rights reserved. Use subject to the terms in the LICENSE file.
+
 #!/usr/bin/env python3
 """Scarica il modello Parakeet con curl (certificati Windows). Nessuno script PowerShell."""
 

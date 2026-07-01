@@ -1,4 +1,7 @@
-"""Interfaccia web FastAPI per Sbobinator (sostituisce Streamlit)."""
+# Copyright (c) 2024-2026 Antonio Trento — https://antoniotrento.net
+# All rights reserved. Use subject to the terms in the LICENSE file.
+
+"""FastAPI web UI for Sbobinator (replaces Streamlit)."""
 
 from __future__ import annotations
 
@@ -31,6 +34,7 @@ from sbobinator.config import (
     models_dir,
     system_ram_gb,
 )
+from sbobinator.license_info import acknowledge_license, license_ui_context
 from sbobinator.jobs import (
     ACTIVE_STATUSES,
     STATUS_CANCELLED,
@@ -167,6 +171,15 @@ def _queue_context() -> dict:
     }
 
 
+def _ui_shell_context(**extra: object) -> dict:
+    """Shared template context: license URLs, acknowledgment, version."""
+    return {
+        "version": __version__,
+        **license_ui_context(),
+        **extra,
+    }
+
+
 def _job_context(job: JobRecord) -> dict:
     summary_text = ""
     if job.summary_path().exists():
@@ -209,6 +222,7 @@ def _job_detail_template_context(
         "active_statuses": ACTIVE_STATUSES,
         **_job_context(job),
         **_summary_context(),
+        **license_ui_context(),
     }
 
 
@@ -272,6 +286,7 @@ async def index(
         "summary_text": "",
         "word_count": 0,
         **_summary_context(preferred_provider=provider),
+        **license_ui_context(),
     }
     if selected:
         ctx.update(_job_context(selected))
@@ -324,6 +339,7 @@ async def jobs_page(
             "active_statuses": ACTIVE_STATUSES,
             "nav_active": "jobs",
             **_summary_context(),
+            **license_ui_context(),
         },
     )
 
@@ -403,9 +419,38 @@ async def settings_summary(
             "flash_type": flash_type,
             "highlight_provider": highlight.strip().lower(),
             "jobs_root": jobs_root().resolve(),
-            "nav_active": "settings",
+            "nav_active": "summary",
             **_summary_context(),
+            **license_ui_context(),
         },
+    )
+
+
+@app.get("/settings/license", response_class=HTMLResponse)
+async def settings_license(
+    request: Request,
+    flash: str = "",
+    flash_type: str = "success",
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "settings_license.html",
+        _ui_shell_context(
+            flash=flash,
+            flash_type=flash_type,
+            nav_active="license",
+        ),
+    )
+
+
+@app.post("/api/license/acknowledge")
+async def license_acknowledge_route(return_to: str = Form("/")) -> RedirectResponse:
+    acknowledge_license(app_version=__version__)
+    dest = return_to if return_to.startswith("/") else "/"
+    sep = "&" if "?" in dest else "?"
+    return RedirectResponse(
+        url=f"{dest}{sep}flash={quote('License accepted')}&flash_type=success",
+        status_code=303,
     )
 
 

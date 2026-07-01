@@ -1,3 +1,6 @@
+# Copyright (c) 2024-2026 Antonio Trento — https://antoniotrento.net
+# All rights reserved. Use subject to the terms in the LICENSE file.
+
 """SSL per richieste HTTPS su Windows (certificate store di sistema)."""
 
 from __future__ import annotations

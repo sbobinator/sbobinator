@@ -1,3 +1,6 @@
+# Copyright (c) 2024-2026 Antonio Trento — https://antoniotrento.net
+# All rights reserved. Use subject to the terms in the LICENSE file.
+
 """Orchestratore riassunto LLM multi-provider con map-reduce per testi lunghi."""
 
 from __future__ import annotations

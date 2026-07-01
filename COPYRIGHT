@@ -1,0 +1,10 @@
+Standard header for Sbobinator source files
+=============================================
+
+Place at the top of every `.py` file (and shell scripts where applicable):
+
+# Copyright (c) 2024-2026 Antonio Trento — https://antoniotrento.net
+# All rights reserved. Use subject to the terms in the LICENSE file.
+
+Owner: Antonio Trento (antoniotrento.net)
+License: see LICENSE (free personal use; paid business/commercial use)

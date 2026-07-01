@@ -1,3 +1,6 @@
+# Copyright (c) 2024-2026 Antonio Trento — https://antoniotrento.net
+# All rights reserved. Use subject to the terms in the LICENSE file.
+
 from dataclasses import dataclass
 
 from enum import Enum
@@ -6,7 +9,7 @@ from pathlib import Path
 
 
 
-# Modello pre-addestrato: italiano incluso tra le 25 lingue EU
+# Pre-trained model: Italian included among 25 EU languages
 
 DEFAULT_MODEL = "nvidia/parakeet-tdt-0.6b-v3"
 
