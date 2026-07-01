@@ -16,13 +16,10 @@ Lo strumento oggi funziona per il caso base — un file, una trascrizione, stori
 
 - **bug-fix/** — correzioni e debito tecnico (cosa è rotto oggi)
 - **evolutive/** — cosa serve domani (funzionalità, architettura, prodotto)
+- **microevolutive/** — sprint concreti con piani eseguibili (multilingua, desktop, backlog)
 
 ## Prossimo passo consigliato
 
-Leggere [ROADMAP-EVOLUTIVE.md](./ROADMAP-EVOLUTIVE.md) sezione **Fase 1** e decidere se partire da:
+Leggere **[microevolutive/README.md](../microevolutive/README.md)** per i piani aggiornati al codice attuale (FastAPI, coda job).
 
-1. **Coda job vera** (accodare senza bloccare la UI)
-2. **Batch + cartella input** (più file in un colpo)
-3. **Allineamento CLI ↔ registro lavori**
-
-Tutti e tre sono collegati; la Fase 1 nel documento principale propone un ordine.
+Per la visione storica vedi [ROADMAP-EVOLUTIVE.md](./ROADMAP-EVOLUTIVE.md) sezione **Fase 1** — gran parte è già realizzata; usare `microevolutive/` per i prossimi sprint.
