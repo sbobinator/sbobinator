@@ -102,4 +102,4 @@ Scelta progetto: compatibilità antivirus e approccio multipiattaforma con Pytho
 
 ### Come pubblico la documentazione?
 
-Dalla root: `python scripts/publish_docs.py` (o `scripts\publish_docs.bat`) — build MkDocs e copia in `../sbobinator.github.io/docs/`, poi commit lì. **Nessuna GitHub Action.** Pubblica con `git push` nel repo Pages (branch `main`, come CryptoQuantix).
+Dalla root: `python scripts/publish_docs.py` (o `scripts\publish_docs.bat`) — build MkDocs e copia in `../sbobinator.github.io/docs/`, poi commit lì. **Nessuna GitHub Action.** Pubblica con `git push` nel repo Pages (branch `main`, come Sbobinator).

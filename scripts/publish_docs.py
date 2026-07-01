@@ -2,7 +2,7 @@
 # All rights reserved. Use subject to the terms in the LICENSE file.
 
 #!/usr/bin/env python3
-"""Publish MkDocs to sbobinator.github.io (same flow as CryptoQuantix publish_docs)."""
+"""Publish MkDocs to sbobinator.github.io (Pages repo sibling clone)."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 REQ = ROOT / "docs" / "requirements.txt"
 # Sibling clone: GitHub user/org Pages repo (branch main — no Actions, no gh-pages).
 PAGES_REPO = ROOT.parent / "sbobinator.github.io"
-# Same subfolder as CryptoQuantix: https://sbobinator.github.io/docs/
+# Published under docs/: https://sbobinator.github.io/docs/
 PAGES_SUBDIR = "docs"
 
 
@@ -29,7 +29,7 @@ def main() -> int:
     print("=== Sbobinator — publish documentation ===\n")
     if not (PAGES_REPO / ".git").is_dir():
         print(f"[FAIL] Pages repo not found: {PAGES_REPO}")
-        print("\nOne-time setup (sibling folder, like CryptoQuantix):")
+        print("\nOne-time setup (sibling folder next to this repo):")
         print(f"  cd {ROOT.parent}")
         print("  git clone https://github.com/sbobinator/sbobinator.github.io.git")
         print("\nGitHub Pages: serve from branch main on that repo (default for *.github.io).")

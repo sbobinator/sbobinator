@@ -97,7 +97,7 @@ Windows wrapper → `restart_ui.py`.
 
 ## `publish_docs.py` / `publish_docs.bat`
 
-Publish documentation to **sbobinator.github.io** (CryptoQuantix-style — no GitHub Actions).
+Publish documentation to **sbobinator.github.io** (Sbobinator-style — no GitHub Actions).
 
 ```cmd
 scripts\publish_docs.bat

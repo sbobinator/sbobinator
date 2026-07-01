@@ -102,4 +102,4 @@ Project choice: antivirus compatibility and a cross-platform approach with Pytho
 
 ### How do I publish the documentation?
 
-From the repo root: `python scripts/publish_docs.py` (or `scripts\publish_docs.bat`) — builds MkDocs and copies HTML to `../sbobinator.github.io/docs/`, then commits there. **No GitHub Actions.** Publish with `git push` in the Pages repo (branch `main`, like CryptoQuantix).
+From the repo root: `python scripts/publish_docs.py` (or `scripts\publish_docs.bat`) — builds MkDocs and copies HTML to `../sbobinator.github.io/docs/`, then commits there. **No GitHub Actions.** Publish with `git push` in the Pages repo (branch `main`, like Sbobinator).
