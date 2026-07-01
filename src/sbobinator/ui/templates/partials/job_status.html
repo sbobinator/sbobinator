@@ -1,0 +1,23 @@
+{% if job.status in active_statuses %}
+<section class="panel job-status-panel">
+  <h3>
+    {% if job.status == status_running %}▶️ In elaborazione{% else %}⏳ In coda{% endif %}
+    — {{ job.source_name }}
+  </h3>
+  <div class="progress-bar">
+    <div class="progress-fill" style="width: {{ job.progress_pct }}%"></div>
+  </div>
+  <p class="hint">{{ job.progress_message or job.status }} · {{ job.progress_pct|round(0) }}%</p>
+  {% if job.status == status_queued %}
+  <form method="post" action="/api/jobs/{{ job.id }}/cancel" class="inline-form">
+    <input type="hidden" name="return_to" value="/jobs/{{ job.id }}">
+    <button type="submit" class="btn btn-secondary">Annulla</button>
+  </form>
+  {% else %}
+  <p class="hint muted">Non annullabile mentre è in elaborazione.</p>
+  {% endif %}
+</section>
+{% else %}
+<div class="flash flash-success">Elaborazione terminata — aggiornamento pagina…</div>
+<script>window.setTimeout(function(){ window.location.reload(); }, 600);</script>
+{% endif %}

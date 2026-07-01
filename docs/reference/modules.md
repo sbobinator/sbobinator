@@ -20,13 +20,17 @@ Gestione coda e persistenza.
 | `requeue_failed()` | Ritenta tutti i falliti |
 | `recover_orphaned_running_jobs()` | Recovery crash |
 | `count_active_jobs()` | Conteggio attivi |
-| `is_source_in_active_queue(name)` | Evita duplicati in coda |
+| `is_source_in_active_queue(name)` | True se nome file già in coda/running |
+| `find_active_jobs_by_source(name)` | Lista job attivi con stesso `source_name` |
+| `delete_job(id)` | Elimina record e cartella (non se `running`) |
+| `reprocess_job(id, ...)` | Nuovo job da file sorgente già salvato |
+| `reconcile_jobs_with_disk()` | Allinea DB e filesystem; ritorna `ReconcileReport` |
 
 ### `JobRecord`
 
-Campi principali: `id`, `source_name`, `status`, `output_dir`, `progress_pct`, `summary_mode`, `error`, timestamp.
+Campi principali: `id`, `source_name`, `status`, `output_dir`, `progress_pct`, `summary_requested`, `summary_provider`, `summary_strategy`, `error`, timestamp.
 
-Metodi path: `txt_path()`, `srt_path()`, `summary_path()`, `source_copy_path()`.
+Metodi: `display_title()`, `folder_exists()`, `txt_path()`, `srt_path()`, `summary_path()`, `source_copy_path()`.
 
 ---
 
@@ -91,4 +95,4 @@ Provider in `sbobinator.summarize_providers.*`.
 
 ## `sbobinator.ui.launch`
 
-`launch_ui(port=8501)` — avvia Streamlit subprocess.
+`launch_ui(port=8501)` — avvia uvicorn (FastAPI).

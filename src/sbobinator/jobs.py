@@ -56,7 +56,20 @@ class JobRecord:
     @property
     def label(self) -> str:
         badge = _status_icon(self.status)
-        return f"{badge} {self.source_name} ({self.id})"
+        return f"{badge} {self.display_title()}"
+
+    def display_title(self) -> str:
+        """Titolo leggibile per UI (senza ID tecnico)."""
+        when = ""
+        if self.created_at:
+            when = self.created_at.replace("T", " ")
+            when = when[11:16] if len(when) >= 16 else when[:16]
+        summary = " · riassunto" if self.summary_requested else " · solo trascrizione"
+        when_part = f" {when}" if when else ""
+        return f"{self.source_name}{when_part}{summary}"
+
+    def folder_exists(self) -> bool:
+        return self.path.exists()
 
     @property
     def path(self) -> Path:
@@ -500,4 +513,130 @@ def load_active_queue() -> list[JobRecord]:
 
 def is_source_in_active_queue(source_name: str) -> bool:
     """True se un file con lo stesso nome è già in coda o in elaborazione."""
-    return any(j.source_name == source_name for j in load_active_queue())
+    return bool(find_active_jobs_by_source(source_name))
+
+
+def find_active_jobs_by_source(source_name: str) -> list[JobRecord]:
+    """Job attivi con lo stesso nome file sorgente."""
+    return [j for j in load_active_queue() if j.source_name == source_name]
+
+
+@dataclass
+class ReconcileReport:
+    removed_missing: list[str]
+    imported_orphans: list[str]
+    failed_missing_folder: list[str]
+
+
+_RESERVED_JOB_ROOT_NAMES = frozenset({".gitkeep", "queue.db", "worker.pid", "index.json"})
+
+
+def _import_job_from_folder(folder: Path) -> JobRecord | None:
+    meta = folder / "job.json"
+    if not meta.exists():
+        return None
+    try:
+        data = json.loads(meta.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    job_id = data.get("id") or folder.name
+    known = {f.name for f in fields(JobRecord)}
+    filtered = {k: v for k, v in data.items() if k in known}
+    filtered.setdefault("id", job_id)
+    filtered.setdefault("output_dir", str(folder.resolve()))
+    try:
+        return JobRecord(**filtered)
+    except TypeError:
+        return None
+
+
+def reconcile_jobs_with_disk() -> ReconcileReport:
+    """Allinea SQLite con le cartelle su disco (rimuove fantasma, importa orfani)."""
+    ensure_db()
+    removed: list[str] = []
+    imported: list[str] = []
+    failed_missing: list[str] = []
+
+    for job in load_index():
+        if job.path.exists():
+            continue
+        if job.status == STATUS_RUNNING:
+            job.status = STATUS_FAILED
+            job.phase = "failed"
+            job.error = "Cartella job rimossa manualmente dal disco"
+            job.progress_message = job.error
+            job.finished_at = datetime.now().isoformat(timespec="seconds")
+            update_job(job)
+            failed_missing.append(job.id)
+            continue
+        with _connect() as conn:
+            conn.execute("DELETE FROM jobs WHERE id=?", (job.id,))
+        removed.append(job.id)
+
+    root = jobs_root()
+    if root.exists():
+        for item in root.iterdir():
+            if not item.is_dir() or item.name in _RESERVED_JOB_ROOT_NAMES:
+                continue
+            if get_job(item.name):
+                continue
+            job = _import_job_from_folder(item)
+            if job:
+                with _connect() as conn:
+                    _upsert_job(conn, job)
+                imported.append(job.id)
+
+    return ReconcileReport(
+        removed_missing=removed,
+        imported_orphans=imported,
+        failed_missing_folder=failed_missing,
+    )
+
+
+def delete_job(job_id: str, *, remove_files: bool = True) -> tuple[bool, str]:
+    """Elimina job da DB e opzionalmente cartella. Non consentito su job running."""
+    ensure_db()
+    job = get_job(job_id)
+    if not job:
+        return False, "Job non trovato"
+    if job.status == STATUS_RUNNING:
+        return False, "Non puoi eliminare un job in elaborazione"
+    if remove_files and job.path.exists():
+        shutil.rmtree(job.path, ignore_errors=True)
+    with _connect() as conn:
+        conn.execute("DELETE FROM jobs WHERE id=?", (job_id,))
+        if conn.total_changes == 0:
+            return False, "Job non trovato"
+    return True, ""
+
+
+def reprocess_job(
+    source_job_id: str,
+    *,
+    summary_requested: bool = False,
+    model_name: str = DEFAULT_MODEL,
+    device: str | None = None,
+    summary_mode: str = "extractive",
+    summary_length: str = "auto",
+    summary_provider: str = "",
+    summary_model: str = "",
+) -> JobRecord:
+    """Nuova elaborazione dallo stesso file sorgente già salvato (nuovo ID)."""
+    old = get_job(source_job_id)
+    if not old:
+        raise ValueError(f"Job {source_job_id} non trovato")
+    src = old.source_copy_path()
+    if not src.exists():
+        raise FileNotFoundError(f"File sorgente non trovato: {src}")
+    return enqueue_job(
+        src,
+        old.source_name,
+        old.stem,
+        summary_requested=summary_requested,
+        model_name=model_name,
+        device=device,
+        summary_mode=summary_mode,
+        summary_length=summary_length,
+        summary_provider=summary_provider if summary_requested else "",
+        summary_model=summary_model,
+    )

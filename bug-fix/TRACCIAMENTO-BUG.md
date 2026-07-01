@@ -44,6 +44,16 @@ Elenco sistematico dei bug rilevati durante sviluppo e test su Windows / Docker 
 | BUG-SUM-025 | Map-reduce non usato su testi medi (locale) | 📋 Aperto |
 | BUG-SUM-026 | Scalabilità riassunto locale su 3 h parlato | 📋 Aperto |
 | BUG-PIPE-027 | Riassunto fallito ma job `completed` | 🔧 Parziale |
+| BUG-QUEUE-021 | Deduplica `source_name` blocca rielaborazione | ✅ Risolto |
+| BUG-QUEUE-022 | Stesso file, più job: UI non distingue | ✅ Risolto |
+| BUG-QUEUE-023 | Nessun sync DB ↔ filesystem | ✅ Risolto |
+| BUG-QUEUE-024 | Nessuna eliminazione job da UI | ✅ Risolto |
+| BUG-QUEUE-025 | Homepage sovraccarica (coda+storico) | ✅ Risolto |
+| BUG-QUEUE-026 | Nessun «Rielabora» da job completato | ✅ Risolto |
+| BUG-QUEUE-027 | Messaggi flash opachi su skip | ✅ Risolto |
+| BUG-QUEUE-028 | `requeue_job` non copre completed | 📋 Aperto (by design: completed → reprocess) |
+| BUG-UX-029 | Label job poco informative | ✅ Risolto |
+| BUG-UX-030 | Nessun indicatore job inconsistente | ✅ Risolto |
 
 ---
 
@@ -70,6 +80,7 @@ Elenco sistematico dei bug rilevati durante sviluppo e test su Windows / Docker 
 7. [Rischi residui e backlog](#7-rischi-residui-e-backlog)
 8. [Come testare le fix](#8-come-testare-le-fix)
 9. [Bug sessione 30 giugno 2026 — LLM locale, deploy, qualità](#9-bug-sessione-30-giugno-2026--llm-locale-deploy-qualità)
+10. [Coda & storico UI — refactor pianificato](#10-coda--storico-ui--refactor-pianificato)
 
 ---
 
@@ -647,6 +658,7 @@ Trascrizioni pre-fix (flat in `data/output/`) non in `index.json`.
 
 | ID | Task |
 |----|------|
+| **P0** | **BUG-QUEUE-021…030** — Coda/storico UI → [`FIX-CODA-STORICO-UI.md`](FIX-CODA-STORICO-UI.md) |
 | **P0** | **BUG-SUM-022…026** — Qualità riassunto locale: prompt, map-reduce obbligatorio, merge gerarchico, scala 3 h |
 | P1 | Deploy fix BUG-UI-021 / BUG-SUM-021 su mini PC (rebuild Docker) |
 | P1 | Allineare CLI al registro `jobs/` |
@@ -952,6 +964,28 @@ ASR: «Gli orazzi e i curiazzi» → riassunto inventa «oche e i curiazzi, prim
 
 ---
 
+## 10. Coda & storico UI — refactor pianificato
+
+> **Documento completo:** [`FIX-CODA-STORICO-UI.md`](FIX-CODA-STORICO-UI.md)  
+> **Segnalazione:** 30/06 — duplicati `campione-italiano-medio` (job `121640` senza riassunto, `121709` con riassunto); impossibilità di rielaborare file «saltato»; pulizia solo manuale su disco/DB; UI non user-friendly.
+
+**Sintesi problemi:**
+
+| ID | Problema |
+|----|----------|
+| BUG-QUEUE-021 | `is_source_in_active_queue()` blocca re-upload se stesso nome ancora attivo |
+| BUG-QUEUE-022 | Sidebar mostra tutti i job senza raggruppare per file |
+| BUG-QUEUE-023 | Cancellazione cartella manuale → fantasma in DB |
+| BUG-QUEUE-024 | Nessun `delete_job` in UI |
+| BUG-QUEUE-025 | `/` mescola upload, coda, storico completo |
+| BUG-QUEUE-026 | Nessun «Rielabora» (es. aggiungere riassunto al secondo giro) |
+
+**Soluzione pianificata:** pagina `/jobs`, `reconcile_jobs_with_disk()`, elimina/rielabora da UI, messaggi flash espliciti.
+
+**Stato:** ✅ implementato — `/jobs`, reconcile, elimina/rielabora, checkbox «Accoda comunque», label migliorate.
+
+---
+
 ## 8. Come testare le fix
 
 ### Test BUG-QUEUE-016 / BUG-UI-017 / BUG-UI-019 (coda + upload + annulla)
@@ -1021,7 +1055,8 @@ sbobina transcribe data/input/campione-italiano-breve.wav -o data/output
 
 | Data | Modifica |
 |------|----------|
-| 2026-06-30 | **Fix qualità locale applicati:** prompt anti-meta/allucinazione; map-reduce obbligatorio Qwen (`use_map_reduce`); chunk 4k; merge gerarchico (`map_reduce_hierarchical`) |
+| 2026-06-30 | **FIX-CODA-STORICO-UI.md** — BUG-QUEUE-021…030, UX-029/030; refactor coda/storico P0 |
+| 2026-06-30 | **Fix qualità locale applicati:** prompt anti-meta/allucinazione; map-reduce obbligatorio Qwen |
 | 2026-06-30 | Sezione 9: BUG-ENV-021, DOCKER-022/023, UI-021, SUM-021…027; registro rapido; BUG-SUM-020/WIN-011 aggiornati; test qualità Qwen |
 | 2026-06-28 | BUG-ARCH-020, BUG-QUEUE-016, BUG-UI-017, BUG-UI-019, BUG-ENV-018, BUG-UX-008 → ✅ risolti (migrazione FastAPI); FIX-RIASSUNTO-LLM |
 | 2026-06-28 | BUG-QUEUE-016, BUG-UI-017, BUG-ENV-018; verifica DB benchmark; aggiornamento v0.3.0 |

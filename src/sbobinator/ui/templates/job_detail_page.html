@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ selected_job.source_name }} — Sbobinator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</head>
+<body>
+  <div class="layout layout-settings">
+    <aside class="sidebar">
+      <h2>Sbobinator</h2>
+      {% include "partials/nav.html" %}
+      <footer class="sidebar-footer">
+        <p class="hint">v{{ version }}</p>
+        <p class="hint"><a href="/jobs">← Tutti i lavori</a></p>
+      </footer>
+    </aside>
+
+    <main class="main main-wide">
+      <nav class="breadcrumb">
+        <a href="/jobs">Coda &amp; storico</a>
+        <span class="breadcrumb-sep">/</span>
+        <span>{{ selected_job.source_name }}</span>
+      </nav>
+
+      {% if flash %}
+      <div class="flash flash-{{ flash_type }}">{{ flash }}</div>
+      {% endif %}
+
+      {% if selected_job.status in active_statuses %}
+      <div id="job-status-panel"
+           hx-get="/partials/job/{{ selected_job.id }}/status"
+           hx-trigger="load, every 2s"
+           hx-swap="innerHTML">
+        <p class="hint">Caricamento stato…</p>
+      </div>
+      {% endif %}
+
+      {% include "partials/job_detail.html" %}
+    </main>
+  </div>
+</body>
+</html>

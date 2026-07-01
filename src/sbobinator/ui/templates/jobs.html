@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Storico lavori — Sbobinator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="layout layout-settings">
+    <aside class="sidebar">
+      <h2>Sbobinator</h2>
+      {% include "partials/nav.html" %}
+      <footer class="sidebar-footer">
+        <p class="hint">v{{ version }}</p>
+        <p class="hint"><code>{{ jobs_root.name }}/</code></p>
+      </footer>
+    </aside>
+
+    <main class="main main-wide">
+      <header class="hero hero-compact">
+        <h1>Coda &amp; storico lavori</h1>
+        <p>Tutte le elaborazioni · elimina, rielabora, sincronizza con disco</p>
+      </header>
+
+      {% if flash %}
+      <div class="flash flash-{{ flash_type }}">{{ flash }}</div>
+      {% endif %}
+
+      <section class="panel">
+        <div class="jobs-toolbar">
+          <form class="jobs-filters" method="get" action="/jobs">
+            <input type="search" name="q" value="{{ q }}" placeholder="Cerca file o ID…">
+            <select name="filter">
+              <option value="all"{% if filter == 'all' %} selected{% endif %}>Tutti</option>
+              <option value="active"{% if filter == 'active' %} selected{% endif %}>In coda / attivi</option>
+              <option value="completed"{% if filter == 'completed' %} selected{% endif %}>Completati</option>
+              <option value="failed"{% if filter == 'failed' %} selected{% endif %}>Falliti / annullati</option>
+              <option value="no_summary"{% if filter == 'no_summary' %} selected{% endif %}>Riassunto mancante</option>
+            </select>
+            <button type="submit" class="btn btn-secondary">Filtra</button>
+          </form>
+          <form method="post" action="/api/jobs/reconcile">
+            <button type="submit" class="btn btn-secondary" title="Rimuove record DB senza cartella">Sincronizza disco</button>
+          </form>
+        </div>
+
+        {% if jobs %}
+        <div class="jobs-table-wrap">
+          <table class="jobs-table">
+            <thead>
+              <tr>
+                <th>Stato</th>
+                <th>File</th>
+                <th>Quando</th>
+                <th>Opzioni</th>
+                <th>Azioni</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for job in jobs %}
+              <tr class="{% if not job.folder_exists() %}row-missing{% endif %}">
+                <td>
+                  {% if job.status == status_running %}▶️{% elif job.status == status_queued %}⏳{% elif job.status == status_completed %}✅{% elif job.status == status_failed %}❌{% elif job.status == status_cancelled %}🚫{% else %}•{% endif %}
+                  <span class="muted">{{ job.status }}</span>
+                </td>
+                <td>
+                  <strong><a href="/jobs/{{ job.id }}" class="job-table-link">{{ job.source_name }}</a></strong>
+                  {% if not job.folder_exists() %}<span class="status-badge status-ko">cartella assente</span>{% endif %}
+                  <div class="hint"><code>{{ job.id }}</code></div>
+                </td>
+                <td class="muted">{{ job.created_at.replace('T', ' ')[:16] }}</td>
+                <td class="muted">
+                  {% if job.summary_requested %}
+                    riassunto{% if job.summary_provider %} · {{ provider_label(job.summary_provider) }}{% endif %}
+                    {% if job.summary_strategy %}<br><span class="hint">{{ job.summary_strategy }}</span>{% endif %}
+                  {% else %}
+                    solo trascrizione
+                  {% endif %}
+                </td>
+                <td class="jobs-actions">
+                  <a class="btn btn-secondary btn-small" href="/jobs/{{ job.id }}">Apri</a>
+                  {% if job.status in active_statuses and job.status == status_queued %}
+                  <form method="post" action="/api/jobs/{{ job.id }}/cancel" style="display:inline">
+                    <input type="hidden" name="return_to" value="/jobs/{{ job.id }}">
+                    <button type="submit" class="btn btn-secondary btn-small">Annulla</button>
+                  </form>
+                  {% endif %}
+                  {% if job.status in (status_failed, status_cancelled) %}
+                  <form method="post" action="/api/jobs/{{ job.id }}/requeue" style="display:inline">
+                    <input type="hidden" name="return_to" value="/jobs/{{ job.id }}">
+                    <button type="submit" class="btn btn-secondary btn-small">Riprova</button>
+                  </form>
+                  {% endif %}
+                  {% if job.status == status_completed and job.folder_exists() %}
+                  <form method="post" action="/api/jobs/{{ job.id }}/reprocess" class="reprocess-inline">
+                    <input type="hidden" name="return_to" value="/jobs/{{ job.id }}">
+                    <input type="hidden" name="model_name" value="{{ default_model }}">
+                    <input type="hidden" name="device" value="auto">
+                    <input type="hidden" name="summary_enabled" value="true">
+                    <input type="hidden" name="summary_provider" value="{{ default_summary_provider }}">
+                    <input type="hidden" name="summary_length" value="auto">
+                    <button type="submit" class="btn btn-secondary btn-small" title="Nuovo job con riassunto (motore predefinito)">+ Riassunto</button>
+                  </form>
+                  <form method="post" action="/api/jobs/{{ job.id }}/reprocess" class="reprocess-inline">
+                    <input type="hidden" name="return_to" value="/jobs/{{ job.id }}">
+                    <input type="hidden" name="model_name" value="{{ default_model }}">
+                    <input type="hidden" name="device" value="auto">
+                    <button type="submit" class="btn btn-secondary btn-small" title="Nuova trascrizione senza riassunto">Rielabora</button>
+                  </form>
+                  {% endif %}
+                  {% if job.status != status_running %}
+                  <form method="post" action="/api/jobs/{{ job.id }}/delete" style="display:inline"
+                        onsubmit="return confirm('Eliminare questo job e la sua cartella?');">
+                    <input type="hidden" name="return_to" value="/jobs">
+                    <button type="submit" class="btn btn-secondary btn-small btn-danger">Elimina</button>
+                  </form>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="hint">{{ jobs|length }} lavoro/i · <a href="/">Torna alla home</a></p>
+        {% else %}
+        <p class="hint">Nessun lavoro per questo filtro.</p>
+        {% endif %}
+      </section>
+      <div id="noop"></div>
+    </main>
+  </div>
+  <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+</body>
+</html>

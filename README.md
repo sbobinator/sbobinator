@@ -72,22 +72,95 @@ sbobina info
 
 Vedi [`requirements/README.md`](requirements/README.md).
 
-## Requisiti
+## Risorse hardware
 
-- Python 3.12+
-- **ffmpeg** nel PATH
-- RAM: 8 GB minimo (16 GB per riassunto locale Qwen)
-- GPU NVIDIA opzionale (trascrizione più veloce)
+Sbobinator gira su **PC Windows/Linux** (installazione Python) o **Linux con Docker** (es. mini PC). Le risorse dipendono da cosa usi: solo trascrizione, riassunto via API cloud, o riassunto locale offline.
 
-## Docker
+### Prerequisiti comuni
+
+| Risorsa | Richiesto |
+|---------|-----------|
+| **Python** | 3.12+ (solo installazione nativa; Docker include già Python) |
+| **ffmpeg** | Obbligatorio — estrae l'audio da video |
+| **CPU** | x64 moderna (AMD/Intel); elaborazione **sequenziale** (un job alla volta) |
+| **GPU NVIDIA** | Opzionale — accelera solo la **trascrizione** ASR (CUDA). Il riassunto locale Qwen usa CPU |
+
+### Confronto per scenario
+
+| Scenario | RAM sistema | Disco libero | Rete | Modelli su disco |
+|----------|-------------|--------------|------|------------------|
+| **Solo trascrizione** | **8 GB** min · **16 GB** consigliato | **~6 GB** | Solo al primo setup (download ASR) | Parakeet ~2.5 GB |
+| **Trascrizione + riassunto API** | Come sopra (+ pochi MB in più) | Come sopra | **Sì** durante il riassunto (chiamate API) | Solo Parakeet |
+| **Trascrizione + riassunto locale** | **≥ 16 GB** (obbligatorio) · **32 GB** ideale per file lunghi | **~8–10 GB** | Solo al primo setup | Parakeet ~2.5 GB + Qwen ~2 GB |
+
+> **Nota:** prima del riassunto locale la pipeline **scarica il modello ASR dalla RAM** per liberare memoria. Non servono 16 GB *in più* oltre al minimo per Qwen, ma il sistema deve avere **almeno 16 GB totali** (RAM fisica, non contando solo la cache).
+
+---
+
+### 1. Solo trascrizione
+
+Trascrizione italiana con NeMo Parakeet — nessun riassunto LLM.
+
+| Risorsa | Dettaglio |
+|---------|-----------|
+| **RAM** | Minimo **8 GB**. Con file audio **lunghi** (1 h+) o molti job in coda, meglio **16 GB** per evitare pressione memoria durante l'ASR. |
+| **Disco** | **~2.5 GB** modello ASR + **~3–4 GB** dipendenze Python/PyTorch/NeMo + spazio per output (`data/output/jobs/`). Totale indicativo **≥ 6 GB** liberi. |
+| **Rete** | Solo per scaricare il modello la prima volta (`download_model.py` o build Docker). In uso normale **offline**. |
+| **GPU** | Opzionale. Su CPU tipica: ordine di **~2× realtime** (1 minuto di audio ≈ 2 minuti di elaborazione). Con GPU NVIDIA la trascrizione è molto più veloce. |
+| **Docker** | L'immagine include già Parakeet (~2.5 GB). Volume `data/` per input/output. |
+
+---
+
+### 2. Trascrizione + riassunto API (cloud)
+
+Stessa base della solo trascrizione; il riassunto gira sui server del provider (DeepSeek, OpenAI, Claude, Gemini, Kimi).
+
+| Risorsa | Dettaglio |
+|---------|-----------|
+| **RAM** | Come **solo trascrizione** — il LLM non gira in locale. |
+| **Disco** | Come **solo trascrizione** — **nessun** modello riassunto da scaricare. |
+| **Rete** | **Obbligatoria** quando generi il riassunto (HTTPS verso l'API). La trascrizione resta locale. |
+| **API key** | Configurabile da UI (`/settings/summary`) o in `data/.secrets/summary_keys.json`. |
+| **Costi** | A carico del provider cloud (token usati sul testo trascritto). |
+
+Adatto a PC con **8 GB di RAM** se usi solo riassunto cloud e non Qwen locale.
+
+---
+
+### 3. Trascrizione + riassunto locale (Qwen)
+
+Riassunto **offline** con Qwen2.5-3B (GGUF Q4) via llama.cpp su CPU.
+
+| Risorsa | Dettaglio |
+|---------|-----------|
+| **RAM** | **≥ 16 GB** di RAM fisica — soglia verificata all'avvio (UI e Docker). Sotto i 16 GB il motore locale viene disabilitato. **32 GB** (es. mini PC AMD) consigliati per audio lunghi e margine per OS + altre app. |
+| **Disco** | Tutto come solo trascrizione **+ ~2 GB** per il GGUF Qwen (`models/qwen2.5-3b-instruct/` o volume Docker `sbobinator-qwen`). Totale indicativo **≥ 8–10 GB** liberi. |
+| **Rete** | Solo per il download iniziale di Qwen (`download_summary_llm.py` o auto-download Docker all'avvio). Poi **offline**. |
+| **CPU** | Il riassunto locale è **CPU-bound**; testi lunghi possono richiedere diversi minuti (map-reduce su chunk). |
+| **Docker** | Se RAM ≥ 16 GB, Qwen si scarica automaticamente al primo avvio del container (~10–20 min, una tantum). |
+
+---
+
+### Docker (mini PC / deploy)
+
+| Profilo | Uso tipico | Porta UI |
+|---------|------------|----------|
+| `cpu` | Mini PC senza GPU NVIDIA | **8502** → 8501 nel container (`docker-compose.yml`) |
+| `gpu` | Server con NVIDIA CUDA | 8502 |
+
+- **Immagine build:** include Parakeet ASR (~2.5 GB nel layer).
+- **Volume `data/`:** job, trascrizioni, API key (non perdere in aggiornamenti).
+- **Volume `sbobinator-qwen`:** modello Qwen locale (persistente tra rebuild).
+
+Per i dettagli operativi: [docs/deployment/docker.md](docs/deployment/docker.md).
 
 ```bash
 cd docker
 docker compose --profile cpu build
-docker compose --profile cpu up
+docker compose --profile cpu up -d
 ```
 
-Solo modello ASR nell'immagine; **Qwen locale si scarica da solo** all'avvio se RAM ≥ 16 GB. Riassunto cloud via API key. Vedi [docs/deployment/docker.md](docs/deployment/docker.md).
+UI su **http://localhost:8502** (profilo `cpu` nel compose predefinito).
 
 ## Modello
 

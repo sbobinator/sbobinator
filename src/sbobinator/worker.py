@@ -11,7 +11,7 @@ import time
 from pathlib import Path
 
 from sbobinator.config import project_root
-from sbobinator.jobs import claim_next_job, jobs_root, recover_orphaned_running_jobs
+from sbobinator.jobs import claim_next_job, jobs_root, recover_orphaned_running_jobs, reconcile_jobs_with_disk
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,14 @@ def worker_loop(poll_interval: float = 1.0) -> None:
     recovered = recover_orphaned_running_jobs()
     if recovered:
         logger.info("Recuperati %d job orfani in coda: %s", len(recovered), ", ".join(recovered))
+    report = reconcile_jobs_with_disk()
+    if report.removed_missing or report.imported_orphans or report.failed_missing_folder:
+        logger.info(
+            "Reconcile disco: rimossi=%d importati=%d falliti=%d",
+            len(report.removed_missing),
+            len(report.imported_orphans),
+            len(report.failed_missing_folder),
+        )
     logger.info("Worker avviato (pid %s)", os.getpid())
     try:
         while not _stop_event.is_set():

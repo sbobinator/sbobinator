@@ -12,7 +12,9 @@
 <body>
   <div class="layout">
     <aside class="sidebar">
-      <h2>Impostazioni</h2>
+      <h2>Sbobinator</h2>
+      {% include "partials/nav.html" %}
+      <hr>
       <form id="settings-form" class="settings-form">
         <label>Dispositivo
           <select name="device" form="enqueue-form">
@@ -54,23 +56,21 @@
         </label>
       </form>
       <hr>
-      <h3>I tuoi lavori</h3>
-      <p class="hint">Cartella: <code>{{ jobs_root.name }}/</code></p>
+      <h3>Ultimi lavori</h3>
+      <p class="hint"><a href="/jobs">Vedi tutti → Coda &amp; storico</a></p>
       {% if jobs %}
       <nav class="job-list">
         {% for j in jobs %}
-        <a href="/?job={{ j.id }}" class="job-link{% if j.id == selected_id %} active{% endif %}">
+        <a href="/jobs/{{ j.id }}" class="job-link{% if j.id == selected_id %} active{% endif %}" title="{{ j.id }}">
           {{ j.label }}
         </a>
         {% endfor %}
       </nav>
-      <p class="hint">{{ jobs|length }} totali</p>
       {% else %}
       <p class="hint">Nessun lavoro ancora.</p>
       {% endif %}
       <footer class="sidebar-footer">
-        <p>Sbobinator v{{ version }}</p>
-        <p class="hint"><a href="/settings/summary" class="nav-inline">Riassunto LLM</a></p>
+        <p class="hint">v{{ version }}</p>
       </footer>
     </aside>
 
@@ -114,6 +114,10 @@
         <form id="enqueue-form" action="/enqueue" method="post" enctype="multipart/form-data" class="upload-form">
           <input type="hidden" name="summary_enabled" id="summary-enabled-field" value="" disabled>
           <input type="file" name="files" multiple accept=".mp4,.mkv,.avi,.mov,.webm,.wav,.mp3,.flac,.m4a,.ogg" required>
+          <label class="checkbox">
+            <input type="checkbox" name="allow_duplicate" value="true">
+            Accoda comunque se lo stesso file è già in coda
+          </label>
           <button type="submit" class="btn btn-primary">Accoda sbobinatura</button>
         </form>
       </section>

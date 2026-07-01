@@ -4,14 +4,14 @@ Il worker elabora la coda job in modo **sequenziale** (FIFO).
 
 ## Avvio automatico (UI)
 
-`app.py` → `_ensure_worker()` → `start_background_worker()`:
+`server.py` (lifespan + `_ensure_worker()`) → `start_background_worker()`:
 
 ```text
 python -m sbobinator.cli worker
 ```
 
 - Un solo worker per volta (controllo `worker.pid`)
-- Processo **daemon** separato da Streamlit
+- Processo **daemon** separato da uvicorn/FastAPI
 - `warmup_asr()` nel worker prima del loop (import NeMo nel main thread del worker)
 
 ## Avvio manuale
@@ -38,9 +38,14 @@ while True:
     run_pipeline(job.id)
 ```
 
-## Recupero crash
+## Recupero crash e sync disco
 
-All'avvio, `recover_orphaned_running_jobs()` rimette in `queued` i job lasciati in `running` (crash, kill processo).
+All'avvio worker:
+
+1. **`recover_orphaned_running_jobs()`** — rimette in `queued` i job lasciati in `running`
+2. **`reconcile_jobs_with_disk()`** — allinea `queue.db` con le cartelle su disco
+
+La UI esegue lo stesso reconcile nel proprio lifespan e all'apertura di `/` e `/jobs`.
 
 ## File PID
 
@@ -50,7 +55,7 @@ All'avvio, `recover_orphaned_running_jobs()` rimette in `queued` i job lasciati 
 
 ## Docker
 
-Nell'immagine Docker, `sbobina ui` avvia comunque il worker subprocess. I modelli sono in `/models/` nell'immagine.
+Nell'immagine Docker, `sbobina docker-ui` avvia UI + worker subprocess. I modelli ASR sono in `/models/` nell'immagine.
 
 Per deploy solo worker (senza UI):
 
@@ -61,4 +66,4 @@ command: worker
 ## Non fare
 
 - Non avviare **più worker** sullo stesso `queue.db` (race su claim — mitigato da SQLite ma sconsigliato)
-- Non usare thread in-process per NeMo dentro Streamlit
+- Non usare thread in-process per NeMo dentro il server web

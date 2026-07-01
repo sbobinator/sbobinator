@@ -31,7 +31,7 @@ All'avvio (`sbobina docker-ui`):
 
 1. Controlla RAM nel container (≥ 16 GB)
 2. Se ok e Qwen assente → scarica ~2 GB da HuggingFace
-3. Avvia UI su **http://localhost:8501**
+3. Avvia UI su **http://localhost:8502** (mapping `8502:8501` nel compose predefinito)
 
 **Primo avvio con download Qwen:** può richiedere 10–20 minuti (rete). I log mostrano il progresso.
 
@@ -77,9 +77,9 @@ Richiede [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-nat
 
 ## Differenze vs locale Windows
 
-| Aspetto | Locale | Docker |
-|---------|--------|--------|
-| UI | `127.0.0.1:8501` | `0.0.0.0:8501` |
+| Aspetto | Locale | Docker (profilo cpu) |
+|---------|--------|----------------------|
+| UI | `127.0.0.1:8501` | `localhost:8502` → container `8501` |
 | ASR | `models/` nel repo | `/models` in immagine |
 | Riassunto cloud | API key in secrets | Stesso (volume `/data`) |
 | Qwen locale | `download_summary_llm.py` | Auto all'avvio Docker se RAM ≥ 16 GB |

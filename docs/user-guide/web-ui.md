@@ -1,6 +1,6 @@
 # Interfaccia web
 
-L'interfaccia è costruita con **Streamlit** (`src/sbobinator/ui/app.py`), porta predefinita **8501**.
+L'interfaccia è costruita con **FastAPI + HTMX** (`src/sbobinator/ui/server.py`), porta predefinita **8501** (Docker profilo `cpu`: host **8502**).
 
 ## Avvio
 
@@ -11,61 +11,50 @@ start.bat
 python scripts\restart_ui.py
 ```
 
-## Layout pagina
+## Navigazione
 
-### Header e statistiche
+| Voce | URL | Descrizione |
+|------|-----|-------------|
+| Home | `/` | Upload, coda live |
+| Coda & storico | `/jobs` | Elenco completo, filtri, azioni |
+| Dettaglio job | `/jobs/{id}` | Trascrizione, riassunto, download, azioni |
+| Riassunto LLM | `/settings/summary` | API key, stato motori, download Qwen |
 
-| Card | Significato |
-|------|-------------|
-| Device | CPU o CUDA in uso |
-| Lingua | IT (fisso) |
-| Lavori salvati | Conteggio da `queue.db` |
-| In coda | Job attivi (queued + running) |
+---
 
-### Pannello coda
+## Home (`/`)
 
-Mostra job in elaborazione o in attesa, con:
+Upload file, impostazioni sidebar, pannello coda attiva (HTMX ogni 2 s). Dopo l'accodamento redirect a **`/jobs/{id}`** del nuovo job.
 
-- barra di progresso
-- messaggio fase (`Caricamento modello NeMo...`, ecc.)
-- pulsante **Annulla** (solo job in coda)
+Sidebar: ultimi **8** job con link alla pagina dedicata.
 
-Aggiornamento automatico ogni 2 secondi mentre ci sono job attivi.
+---
 
-### Upload file
+## Coda & storico (`/jobs`)
 
-- Supporta **più file** contemporaneamente
-- Formati: MP4, MKV, AVI, MOV, WEBM, WAV, MP3, FLAC, M4A, OGG
-- L'uploader è **fuori** dal form Streamlit (altrimenti il bottone resta disabilitato)
-- Dopo l'accodamento, file con lo stesso nome già **in coda** vengono saltati
+Tabella di tutti i job con filtri, ricerca e azioni rapide. Clic sul **nome file** o **Apri** → `/jobs/{id}`.
 
-### Risultati
+---
 
-La pagina principale mostra il dettaglio del **job selezionato** (sidebar → "Seleziona lavoro"):
+## Dettaglio job (`/jobs/{id}`)
 
-- Tab **Trascrizione** — testo completo
-- Tab **Riassunto** — se generato o messaggio errore
-- Tab **Download** — percorsi e pulsanti
-- Box **File salvati su disco** — path assoluti + "Apri cartella"
+Pagina dedicata per consultare un singolo lavoro:
 
-!!! note "Un job alla volta in pagina"
-    Per vedere altri risultati usa il menu **Seleziona lavoro** nella sidebar. Tutti i file sono comunque su disco in `data/output/jobs/`.
+- Breadcrumb «Coda & storico / nome file»
+- Job **in corso**: pannello progresso con polling HTMX (`/partials/job/{id}/status`), auto-reload al termine
+- Job **completato**: trascrizione, riassunto, download TXT/SRT/riassunto
+- Path cartella, **Apri cartella**, rielabora, elimina
 
-## Sidebar
+---
 
-### Impostazioni
+## Impostazioni riassunto (`/settings/summary`)
 
-| Opzione | Descrizione |
-|---------|-------------|
-| Dispositivo | auto / cpu / cuda |
-| Modello ASR | ID HuggingFace (default Parakeet) |
-| Genera riassunto | on/off |
-| Modalità | Estrattivo o mT5 (se modello presente) |
-| Lunghezza riassunto | auto, breve, normale, dettagliato |
+- API key provider cloud (DeepSeek, OpenAI, …)
+- Stato disponibilità motori
+- Download / percorso modello Qwen locale
+- RAM sistema vs soglia minima (16 GB per locale)
 
-### I tuoi lavori
-
-Elenco da SQLite — non dalla scansione cartelle. Vedi [Coda e storico](jobs-queue.md).
+---
 
 ## Worker in background
 
@@ -75,12 +64,36 @@ All'avvio UI, `start_background_worker()` lancia un **processo separato**:
 python -m sbobinator.cli worker
 ```
 
-NeMo **non** gira nel thread Streamlit (evita crash `lightning.fabric`).
+NeMo **non** gira nel processo uvicorn (evita crash `lightning.fabric`).
 
 PID salvato in `data/output/jobs/worker.pid`.
 
+All'avvio worker: `recover_orphaned_running_jobs()` + `reconcile_jobs_with_disk()`.
+
+---
+
+## API HTTP (principali)
+
+| Metodo | Path | Uso |
+|--------|------|-----|
+| POST | `/enqueue` | Upload e accodamento |
+| GET | `/partials/queue` | Fragment HTMX coda |
+| GET | `/partials/job/{id}/status` | Progresso singolo job |
+| GET | `/jobs/{id}` | Pagina dettaglio job |
+| POST | `/api/jobs/{id}/cancel` | Annulla (param `return_to` opzionale) |
+| POST | `/api/jobs/{id}/delete` | Elimina job e cartella |
+| POST | `/api/jobs/{id}/reprocess` | Nuova elaborazione |
+| POST | `/api/jobs/{id}/requeue` | Rimetti in coda |
+| POST | `/api/jobs/reconcile` | Sync DB ↔ disco |
+| GET | `/download/{id}/{kind}` | Scarica txt / srt / summary |
+
+---
+
 ## Suggerimenti
 
-- Un solo `restart_ui.py` alla volta — evita più Streamlit sulla porta 8501
+- Un solo `restart_ui.py` alla volta — evita più istanze sulla stessa porta
 - Dopo `clean_output.py`, ricarica la pagina (F5)
 - Primo job dopo avvio: 1–2 min per caricare Parakeet in RAM
+- Stesso file più volte → più cartelle: usa `/jobs` e le label con ora/riassunto per orientarti
+
+Vedi [Coda e storico job](jobs-queue.md) per la logica completa.

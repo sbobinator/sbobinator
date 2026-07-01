@@ -59,6 +59,7 @@ nav:
       - getting-started/installation.md
       - getting-started/quickstart.md
       - getting-started/models.md
+      - getting-started/hardware.md
   - Guida utente:
       - user-guide/web-ui.md
       - user-guide/cli.md

@@ -1,12 +1,16 @@
+{% set job_return_to = return_to|default('/jobs/' ~ selected_job.id) %}
 <section class="panel job-detail">
   <h2>
     {% if selected_job.status == status_failed %}❌ Fallito{% elif selected_job.status in active_statuses %}⏳ In corso{% else %}✅ Risultati{% endif %}
     — {{ selected_job.source_name }}
   </h2>
   <p class="hint">ID: <code>{{ selected_job.id }}</code> · Stato: <strong>{{ selected_job.status }}</strong>
+    {% if selected_job.created_at %} · {{ selected_job.created_at.replace('T', ' ')[:16] }}{% endif %}
     {% if selected_job.summary_requested and selected_job.summary_provider %}
     · Riassunto: {{ provider_label(selected_job.summary_provider) }}
     {% if selected_job.summary_strategy %} ({{ selected_job.summary_strategy }}){% endif %}
+    {% elif not selected_job.summary_requested %}
+    · Solo trascrizione
     {% endif %}
   </p>
 
@@ -27,13 +31,55 @@
     <form action="/api/open-folder/{{ selected_job.id }}" method="post" onsubmit="event.preventDefault(); fetch(this.action,{method:'POST'}).then(()=>{});">
       <button type="submit" class="btn btn-secondary">Apri cartella in Esplora file</button>
     </form>
+    <div class="job-actions-row">
+      {% if selected_job.status == status_completed and selected_job.folder_exists() %}
+      <form method="post" action="/api/jobs/{{ selected_job.id }}/reprocess" class="inline-form">
+        <input type="hidden" name="return_to" value="{{ job_return_to }}">
+        <input type="hidden" name="model_name" value="{{ default_model }}">
+        <input type="hidden" name="device" value="auto">
+        <input type="hidden" name="summary_enabled" value="true">
+        <input type="hidden" name="summary_provider" value="{{ default_summary_provider }}">
+        <input type="hidden" name="summary_length" value="auto">
+        <button type="submit" class="btn btn-primary">Nuova elaborazione con riassunto</button>
+      </form>
+      <form method="post" action="/api/jobs/{{ selected_job.id }}/reprocess" class="inline-form">
+        <input type="hidden" name="return_to" value="{{ job_return_to }}">
+        <input type="hidden" name="model_name" value="{{ default_model }}">
+        <input type="hidden" name="device" value="auto">
+        <button type="submit" class="btn btn-secondary">Rielabora (solo trascrizione)</button>
+      </form>
+      {% endif %}
+      {% if selected_job.status in (status_failed, status_cancelled) %}
+      <form method="post" action="/api/jobs/{{ selected_job.id }}/requeue" class="inline-form">
+        <input type="hidden" name="return_to" value="{{ job_return_to }}">
+        <button type="submit" class="btn btn-secondary">Rimetti in coda</button>
+      </form>
+      {% endif %}
+      {% if selected_job.status != status_running %}
+      <form method="post" action="/api/jobs/{{ selected_job.id }}/delete" class="inline-form"
+            onsubmit="return confirm('Eliminare job e cartella?');">
+        <input type="hidden" name="return_to" value="/jobs">
+        <button type="submit" class="btn btn-secondary btn-danger">Elimina job</button>
+      </form>
+      {% endif %}
+      {% if detail_standalone %}
+      <a class="btn btn-secondary" href="/jobs">← Torna allo storico</a>
+      {% else %}
+      <a class="btn btn-secondary" href="/jobs/{{ selected_job.id }}">Apri pagina dedicata</a>
+      <a class="btn btn-secondary" href="/jobs">Vai allo storico</a>
+      {% endif %}
+    </div>
   </div>
 
   {% if selected_job.status == status_failed %}
   <div class="flash flash-error">{{ selected_job.error or selected_job.progress_message }}</div>
 
-  {% elif selected_job.status in active_statuses %}
-  <p class="info">Segui lo stato nel riquadro <strong>Coda elaborazione</strong> sopra.</p>
+  {% elif selected_job.status in active_statuses and not detail_standalone %}
+  <p class="info">Segui lo stato nel riquadro <strong>Coda elaborazione</strong> sopra, oppure
+    <a href="/jobs/{{ selected_job.id }}">apri la pagina dedicata</a>.</p>
+
+  {% elif selected_job.status in active_statuses and detail_standalone %}
+  <p class="info">Trascrizione e riassunto appariranno qui al termine dell'elaborazione.</p>
 
   {% elif transcript_text %}
   <div class="tabs">
@@ -42,7 +88,7 @@
       <textarea readonly rows="16">{{ transcript_text }}</textarea>
       <p class="hint">{{ transcript_text|length }} caratteri · {{ word_count }} parole</p>
     </details>
-    <details>
+    <details{% if summary_text %} open{% endif %}>
       <summary>Riassunto</summary>
       {% if summary_text %}
       <div class="summary-text">{{ summary_text }}</div>

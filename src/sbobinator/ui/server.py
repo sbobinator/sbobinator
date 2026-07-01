@@ -41,13 +41,17 @@ from sbobinator.jobs import (
     JobRecord,
     cancel_job,
     count_active_jobs,
+    delete_job,
     ensure_db,
     enqueue_job,
+    find_active_jobs_by_source,
     get_job,
-    is_source_in_active_queue,
     jobs_root,
     load_active_queue,
     load_index,
+    reconcile_jobs_with_disk,
+    reprocess_job,
+    requeue_job,
 )
 from sbobinator.summary_config import (
     DEFAULT_MODELS,
@@ -133,6 +137,7 @@ def _summary_context(*, preferred_provider: str = "") -> dict:
     local_cap = next((p for p in providers if p["id"] == "local"), None)
 
     return {
+        "default_model": DEFAULT_MODEL,
         "summary_providers": providers,
         "default_summary_provider": default_provider,
         "available_provider_ids": available_ids,
@@ -177,10 +182,41 @@ def _job_context(job: JobRecord) -> dict:
     }
 
 
+def _job_detail_template_context(
+    job: JobRecord,
+    *,
+    nav_active: str = "jobs",
+    flash: str = "",
+    flash_type: str = "success",
+    detail_standalone: bool = False,
+    return_to: str | None = None,
+) -> dict:
+    job_return_to = return_to if return_to and return_to.startswith("/") else f"/jobs/{job.id}"
+    return {
+        "version": __version__,
+        "jobs_root": jobs_root().resolve(),
+        "selected_job": job,
+        "detail_standalone": detail_standalone,
+        "return_to": job_return_to,
+        "flash": flash,
+        "flash_type": flash_type,
+        "nav_active": nav_active,
+        "status_queued": STATUS_QUEUED,
+        "status_running": STATUS_RUNNING,
+        "status_completed": STATUS_COMPLETED,
+        "status_failed": STATUS_FAILED,
+        "status_cancelled": STATUS_CANCELLED,
+        "active_statuses": ACTIVE_STATUSES,
+        **_job_context(job),
+        **_summary_context(),
+    }
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     ensure_ssl()
     ensure_db()
+    reconcile_jobs_with_disk()
     start_background_worker()
     yield
 
@@ -205,7 +241,8 @@ async def index(
     flash_type: str = "success",
 ) -> HTMLResponse:
     _ensure_worker()
-    jobs = load_index()
+    reconcile_jobs_with_disk()
+    jobs = load_index(limit=8)
     selected_id = job or (jobs[0].id if jobs else "")
     selected = get_job(selected_id) if selected_id else None
     config = TranscribeConfig()
@@ -213,7 +250,7 @@ async def index(
         "version": __version__,
         "python_exe": sys.executable,
         "device": config.resolve_device().upper(),
-        "jobs_count": len(jobs),
+        "jobs_count": len(load_index()),
         "active_count": count_active_jobs(),
         "jobs": jobs,
         "selected_job": selected,
@@ -230,6 +267,7 @@ async def index(
         "status_failed": STATUS_FAILED,
         "status_cancelled": STATUS_CANCELLED,
         "active_statuses": ACTIVE_STATUSES,
+        "nav_active": "home",
         "transcript_text": "",
         "summary_text": "",
         "word_count": 0,
@@ -237,7 +275,114 @@ async def index(
     }
     if selected:
         ctx.update(_job_context(selected))
+        ctx["return_to"] = f"/?job={selected.id}"
+        ctx["detail_standalone"] = False
     return templates.TemplateResponse(request, "index.html", ctx)
+
+
+@app.get("/jobs", response_class=HTMLResponse)
+async def jobs_page(
+    request: Request,
+    filter: str = "all",
+    q: str = "",
+    flash: str = "",
+    flash_type: str = "success",
+) -> HTMLResponse:
+    _ensure_worker()
+    report = reconcile_jobs_with_disk()
+    jobs = load_index()
+    query = q.strip().lower()
+    if query:
+        jobs = [j for j in jobs if query in j.source_name.lower() or query in j.id.lower()]
+    filt = filter.strip().lower()
+    if filt == "active":
+        jobs = [j for j in jobs if j.status in ACTIVE_STATUSES]
+    elif filt == "completed":
+        jobs = [j for j in jobs if j.status == STATUS_COMPLETED]
+    elif filt == "failed":
+        jobs = [j for j in jobs if j.status in {STATUS_FAILED, STATUS_CANCELLED}]
+    elif filt == "no_summary":
+        jobs = [j for j in jobs if j.status == STATUS_COMPLETED and j.summary_requested and not j.has_summary]
+
+    return templates.TemplateResponse(
+        request,
+        "jobs.html",
+        {
+            "version": __version__,
+            "jobs": jobs,
+            "jobs_root": jobs_root().resolve(),
+            "filter": filt or "all",
+            "q": q,
+            "flash": flash,
+            "flash_type": flash_type,
+            "reconcile_removed": len(report.removed_missing),
+            "status_queued": STATUS_QUEUED,
+            "status_running": STATUS_RUNNING,
+            "status_completed": STATUS_COMPLETED,
+            "status_failed": STATUS_FAILED,
+            "status_cancelled": STATUS_CANCELLED,
+            "active_statuses": ACTIVE_STATUSES,
+            "nav_active": "jobs",
+            **_summary_context(),
+        },
+    )
+
+
+@app.get("/jobs/{job_id}", response_class=HTMLResponse, response_model=None)
+async def job_detail_page(
+    request: Request,
+    job_id: str,
+    flash: str = "",
+    flash_type: str = "success",
+) -> HTMLResponse | RedirectResponse:
+    _ensure_worker()
+    job = get_job(job_id)
+    if not job:
+        return RedirectResponse(
+            url="/jobs?flash=Job+non+trovato&flash_type=warning",
+            status_code=303,
+        )
+    return templates.TemplateResponse(
+        request,
+        "job_detail_page.html",
+        _job_detail_template_context(
+            job,
+            flash=flash,
+            flash_type=flash_type,
+            detail_standalone=True,
+        ),
+    )
+
+
+@app.get("/partials/job/{job_id}/status", response_class=HTMLResponse)
+async def job_status_partial(request: Request, job_id: str) -> HTMLResponse:
+    job = get_job(job_id)
+    if not job:
+        return HTMLResponse("<p class='warning'>Job non trovato.</p>", status_code=404)
+    return templates.TemplateResponse(
+        request,
+        "partials/job_status.html",
+        {
+            "job": job,
+            "status_queued": STATUS_QUEUED,
+            "status_running": STATUS_RUNNING,
+            "active_statuses": ACTIVE_STATUSES,
+        },
+    )
+
+
+@app.get("/partials/queue", response_class=HTMLResponse)
+async def queue_partial(request: Request) -> HTMLResponse:
+    _ensure_worker()
+    return templates.TemplateResponse(
+        request,
+        "partials/queue.html",
+        {
+            "status_queued": STATUS_QUEUED,
+            "status_running": STATUS_RUNNING,
+            **_queue_context(),
+        },
+    )
 
 
 @app.get("/settings/summary", response_class=HTMLResponse)
@@ -258,28 +403,24 @@ async def settings_summary(
             "flash_type": flash_type,
             "highlight_provider": highlight.strip().lower(),
             "jobs_root": jobs_root().resolve(),
+            "nav_active": "settings",
             **_summary_context(),
         },
     )
 
 
-@app.get("/partials/queue", response_class=HTMLResponse)
-async def queue_partial(request: Request) -> HTMLResponse:
-    _ensure_worker()
-    return templates.TemplateResponse(
-        request,
-        "partials/queue.html",
-        {
-            "status_queued": STATUS_QUEUED,
-            "status_running": STATUS_RUNNING,
-            **_queue_context(),
-        },
-    )
-
-
-@app.post("/api/jobs/{job_id}/cancel", response_class=HTMLResponse)
-async def cancel_job_route(request: Request, job_id: str) -> HTMLResponse:
+@app.post("/api/jobs/{job_id}/cancel", response_model=None)
+async def cancel_job_route(
+    request: Request,
+    job_id: str,
+    return_to: str = Form(""),
+) -> HTMLResponse | RedirectResponse:
     cancel_job(job_id)
+    if return_to.startswith("/"):
+        return RedirectResponse(
+            url=f"{return_to}?flash={quote('Job annullato')}&flash_type=success",
+            status_code=303,
+        )
     return await queue_partial(request)
 
 
@@ -289,6 +430,113 @@ async def cancel_all_queued_route(request: Request) -> HTMLResponse:
         if job.status == STATUS_QUEUED:
             cancel_job(job.id)
     return await queue_partial(request)
+
+
+@app.post("/api/jobs/{job_id}/delete")
+async def delete_job_route(
+    job_id: str,
+    return_to: str = Form("/jobs"),
+) -> RedirectResponse:
+    ok, err = delete_job(job_id)
+    dest = return_to if return_to.startswith("/") else "/jobs"
+    if ok:
+        flash = quote("Job eliminato")
+        flash_type = "success"
+    else:
+        flash = quote(err or "Eliminazione fallita")
+        flash_type = "warning"
+    sep = "&" if "?" in dest else "?"
+    return RedirectResponse(url=f"{dest}{sep}flash={flash}&flash_type={flash_type}", status_code=303)
+
+
+@app.post("/api/jobs/{job_id}/reprocess")
+async def reprocess_job_route(
+    job_id: str,
+    model_name: str = Form(DEFAULT_MODEL),
+    device: str = Form("auto"),
+    summary_enabled: str | None = Form(default=None),
+    summary_provider: str = Form("deepseek"),
+    summary_length: str = Form("auto"),
+    return_to: str = Form("/jobs"),
+) -> RedirectResponse:
+    _ensure_worker()
+    device_val = None if device == "auto" else device
+    summary_on = summary_enabled == "true"
+    provider_id = summary_provider.strip().lower()
+    dest = return_to if return_to.startswith("/") else "/jobs"
+
+    if summary_on:
+        if provider_id not in PROVIDER_IDS:
+            return RedirectResponse(
+                url=f"{dest}?flash=Provider+non+valido&flash_type=warning",
+                status_code=303,
+            )
+        impl = get_provider(provider_id)
+        available, reason = impl.is_available()
+        if not available:
+            return RedirectResponse(
+                url=f"/settings/summary?flash={quote(reason)}&flash_type=warning&highlight={provider_id}",
+                status_code=303,
+            )
+
+    try:
+        new_job = reprocess_job(
+            job_id,
+            summary_requested=summary_on,
+            model_name=model_name,
+            device=device_val,
+            summary_provider=provider_id if summary_on else "",
+            summary_length=summary_length,
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        return RedirectResponse(
+            url=f"{dest}?flash={quote(str(exc))}&flash_type=warning",
+            status_code=303,
+        )
+
+    msg = "Nuova elaborazione accodata"
+    if summary_on:
+        msg += f" · con riassunto ({provider_label(provider_id)})"
+    return RedirectResponse(
+        url=f"/jobs/{new_job.id}?flash={quote(msg)}&flash_type=success",
+        status_code=303,
+    )
+
+
+@app.post("/api/jobs/{job_id}/requeue")
+async def requeue_job_route(
+    job_id: str,
+    return_to: str = Form("/jobs"),
+) -> RedirectResponse:
+    dest = return_to if return_to.startswith("/") else "/jobs"
+    if requeue_job(job_id):
+        sep = "&" if "?" in dest else "?"
+        return RedirectResponse(
+            url=f"{dest}{sep}flash={quote('Job rimesso in coda')}&flash_type=success",
+            status_code=303,
+        )
+    sep = "&" if "?" in dest else "?"
+    return RedirectResponse(
+        url=f"{dest}{sep}flash={quote('Impossibile rimettere in coda')}&flash_type=warning",
+        status_code=303,
+    )
+
+
+@app.post("/api/jobs/reconcile")
+async def reconcile_route() -> RedirectResponse:
+    report = reconcile_jobs_with_disk()
+    parts: list[str] = []
+    if report.removed_missing:
+        parts.append(f"{len(report.removed_missing)} record fantasma rimossi")
+    if report.imported_orphans:
+        parts.append(f"{len(report.imported_orphans)} cartelle importate")
+    if report.failed_missing_folder:
+        parts.append(f"{len(report.failed_missing_folder)} job segnati falliti (cartella assente)")
+    msg = " · ".join(parts) if parts else "Nessuna differenza tra disco e database"
+    return RedirectResponse(
+        url=f"/jobs?flash={quote(msg)}&flash_type=success",
+        status_code=303,
+    )
 
 
 @app.post("/api/open-folder/{job_id}")
@@ -368,6 +616,7 @@ async def enqueue_files(
     summary_enabled: str | None = Form(default=None),
     summary_provider: str = Form("deepseek"),
     summary_length: str = Form("auto"),
+    allow_duplicate: str | None = Form(default=None),
 ) -> RedirectResponse:
     _ensure_worker()
     if not files:
@@ -394,6 +643,7 @@ async def enqueue_files(
 
     enqueued: list[str] = []
     skipped: list[str] = []
+    allow_dup = allow_duplicate == "true"
     work_dir = Path(tempfile.mkdtemp(prefix="sbobinator_ui_"))
     try:
         seen_names: set[str] = set()
@@ -404,8 +654,10 @@ async def enqueue_files(
             if source_name in seen_names:
                 continue
             seen_names.add(source_name)
-            if is_source_in_active_queue(source_name):
-                skipped.append(source_name)
+            blocking = find_active_jobs_by_source(source_name)
+            if blocking and not allow_dup:
+                blocker = blocking[0]
+                skipped.append(f"{source_name} (attivo: {blocker.id})")
                 continue
             stem = Path(source_name).stem
             tmp_path = work_dir / source_name
@@ -441,7 +693,7 @@ async def enqueue_files(
         summary_q = "summary=1" if summary_on else "summary=0"
         return RedirectResponse(
             url=(
-                f"/?job={last}&provider={provider_id}&{summary_q}"
+                f"/jobs/{last}?{summary_q}"
                 f"&flash={quote(msg)}&flash_type=success"
             ),
             status_code=303,
@@ -449,7 +701,10 @@ async def enqueue_files(
 
     if skipped:
         return RedirectResponse(
-            url=f"/?flash=Saltati+(gia+in+coda):+{','.join(skipped)}&flash_type=warning",
+            url=(
+                f"/?flash={quote('Saltati (file già in coda — spunta Accoda comunque o annulla il job attivo): ' + '; '.join(skipped))}"
+                f"&flash_type=warning"
+            ),
             status_code=303,
         )
     return RedirectResponse(url="/?flash=Nessun+file+valido&flash_type=warning", status_code=303)

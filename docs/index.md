@@ -7,7 +7,7 @@
 | Funzione | Descrizione |
 |----------|-------------|
 | **Trascrizione** | Audio/video → testo + sottotitoli SRT |
-| **Coda job** | Più file elaborati uno alla volta, con storico persistente |
+| **Coda job** | Più file elaborati uno alla volta; elenco in `/jobs`, dettaglio in `/jobs/{id}` |
 | **Riassunto** | LLM multi-provider (DeepSeek, OpenAI, Qwen locale, …) |
 | **Interfaccia web** | FastAPI + HTMX su porta 8501 |
 | **CLI** | `sbobina` per automazione e server headless |
@@ -19,13 +19,18 @@
 3. **Nessun overwrite** — ogni job ha la sua cartella con timestamp.
 4. **Multipiattaforma** — Python nativo (sviluppo) e Docker Linux (deploy).
 
-## Requisiti minimi
+## Requisiti hardware
+
+Dipendono dallo scenario d'uso (solo trascrizione, riassunto API, riassunto locale). Vedi la guida dedicata:
+
+**[Risorse hardware](getting-started/hardware.md)** — RAM, disco, rete e GPU per ogni modalità.
 
 | Risorsa | Minimo | Consigliato |
 |---------|--------|-------------|
 | Python | 3.12+ | 3.12 o 3.13 |
-| RAM | 8 GB | 16–32 GB |
-| Disco | 5 GB liberi | 10 GB (modelli + output) |
+| RAM (solo ASR) | 8 GB | 16 GB |
+| RAM (Qwen locale) | 16 GB | 32 GB |
+| Disco | 6 GB liberi | 10 GB |
 | ffmpeg | Obbligatorio | Nel PATH |
 | GPU NVIDIA | Opzionale | CUDA per velocità ASR |
 
