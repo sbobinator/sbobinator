@@ -1,0 +1,5 @@
+# extractive / normal
+# parole sorgente: 292 -> riassunto: 67 (22.9%)
+# frasi: 27 -> 3 | tempo: 0.0s
+
+Ogni modo ci sarebbe più da stupirsi per il fatto che la storia di Roma è una serie così avvincente di vicende drammatiche. Io mi stupirei, dico, piuttosto del fatto che nessuno abbia pensato finora a mettere in versi la storia, a farne un poema. Gli orazzi e curiazzi, diciamolo la conclusione, cominciano a combattere con una audacia indoma, mentre i presenti gridano forza Alba, forza Roma!

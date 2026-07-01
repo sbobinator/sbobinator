@@ -1,0 +1,5 @@
+# abstractive / short
+# parole sorgente: 292 -> riassunto: 24 (8.2%)
+# frasi: 27 -> 2 | tempo: 3.27s
+
+la storia di roma raccontata da alberto cavaliere in 340 pagine. il poeta maledetto, dopo la chimica in versi, si è dato alla storia.

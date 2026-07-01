@@ -1,0 +1,5 @@
+# extractive / short
+# parole sorgente: 641 -> riassunto: 57 (8.9%)
+# frasi: 29 -> 2 | tempo: 0.0s
+
+Una cosa che mi rende orgogliosa è conoscere quanto nel tempo la mia esperienza nel mondo Wikimedia abbia cambiato il mio modo di intendere molte cose. Questo è la sostanza il filo che mi tiene legata al nostro movimento e mi sento senz'altro privilegiata per il fatto che posso perseguire questa direzione anche tramite il mio lavoro.

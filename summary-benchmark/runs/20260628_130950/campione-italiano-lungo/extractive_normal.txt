@@ -1,0 +1,5 @@
+# extractive / normal
+# parole sorgente: 641 -> riassunto: 103 (16.1%)
+# frasi: 29 -> 3 | tempo: 0.0s
+
+Una cosa che mi rende orgogliosa è conoscere quanto nel tempo la mia esperienza nel mondo Wikimedia abbia cambiato il mio modo di intendere molte cose. Questo è la sostanza il filo che mi tiene legata al nostro movimento e mi sento senz'altro privilegiata per il fatto che posso perseguire questa direzione anche tramite il mio lavoro. Io voglio distanziarmi nettamente dagli elitisti, da chi ancora sta a misurare il valore della partecipazione al movimento in termini di numero di modifiche effettuate, da chi pensa a Wikipedia e ai sidi fratelli, come a strumenti ai quali servono strutture e regole rigidissime per funzionare.

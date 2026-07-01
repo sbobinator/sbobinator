@@ -1,0 +1,5 @@
+# abstractive / normal
+# parole sorgente: 19 -> riassunto: 21 (110.5%)
+# frasi: 2 -> 2 | tempo: 3.35s
+
+il test di trascrizione in italiano con sbobinator. la qualità dipende dal modello nemo perakate e dipende dalla qualità del modello.

@@ -1,0 +1,5 @@
+# abstractive / detailed
+# parole sorgente: 19 -> riassunto: 34 (178.9%)
+# frasi: 2 -> 3 | tempo: 4.33s
+
+il test di trascrizione in italiano con sbobinator. la qualità dipende dal modello nemo perakate e dipende dalla qualità del modello. le cose da sapere su questo test e su come si ottiene l'insiema.

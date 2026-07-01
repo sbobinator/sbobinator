@@ -1,0 +1,5 @@
+# extractive / short
+# parole sorgente: 292 -> riassunto: 44 (15.1%)
+# frasi: 27 -> 2 | tempo: 0.0s
+
+Io mi stupirei, dico, piuttosto del fatto che nessuno abbia pensato finora a mettere in versi la storia, a farne un poema. Gli orazzi e curiazzi, diciamolo la conclusione, cominciano a combattere con una audacia indoma, mentre i presenti gridano forza Alba, forza Roma!
